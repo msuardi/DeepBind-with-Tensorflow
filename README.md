@@ -9,7 +9,7 @@ Per poter eseguire i codici presenti nel repository, è necessario installare Te
 ## Installazione CUDA
 Il mio PC è dotato di una scheda video NVIDIA GEForce 930MX, e sto lavorando su Linux Ubuntu 16.04 LTS.
 Ho seguito la guida presente a questo link: 
-http://docs.nvidia.com/cuhttp://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html#ubuntu-installationda/cuda-installation-guide-linux/index.html#ubuntu-installation.
+http://docs.nvidia.com/cuhttp://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html#ubuntu-installationda/cuda-installation-guide-linux/index.html#ubuntu-installation
 
 Ovvero:
 - Ho scaricato i pacchetti per Linux Ubuntu 16.04 x86_64
