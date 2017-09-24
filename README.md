@@ -2,6 +2,8 @@
 L'obiettivo della tesi è di riproporre il lavoro di Alipanahi, Delong, Weirauch e Frey, spiegato nel paper "Predicting the sequence specificities of DNA- and RNA-binding proteins by deep learning" con l'utilizzo di Tensorflow.
 Il paper è disponibile con accesso full text al link seguente:
 http://www.nature.com/nbt/journal/v33/n8/full/nbt.3300.html
+Per poter approfondire la conoscenza di Tensorflow, è disponibile questo corso gratuito:
+https://www.udacity.com/course/deep-learning--ud730
 
 # Operazioni preliminari
 Per poter eseguire i codici presenti nel repository, è necessario installare Tensorflow e tutti i requisiti necessari al suo funzionamento. Seguono alcune indicazioni su ciò che ho fatto e alcune guide seguite per velocizzare il tutto.
