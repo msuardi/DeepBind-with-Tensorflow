@@ -23,7 +23,7 @@ def openChip(sequencefile):
     random.shuffle(train_dataset)
     train_seq=np.asarray([elem[0] for elem in train_dataset])
     train_lab=np.asarray([elem[1] for elem in train_dataset])
-    return train_seq,train_lab
+    return train_seq,train_lab,motiflen
 
 #funzione per aprire il file di test di CHIP-seq
 def openChipTest(sequencefile):
@@ -43,4 +43,4 @@ def openChipTest(sequencefile):
     random.shuffle(test_dataset)
     test_seq=np.asarray([elem[0] for elem in test_dataset])
     test_lab=np.asarray([elem[1] for elem in test_dataset])
-    return test_seq,test_lab    
+    return test_seq,test_lab
