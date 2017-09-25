@@ -4,4 +4,5 @@
 3. Ho usato al posto del max pooling e dell'average pooling le operazioni di reduce max e mean perché supportano una dimensione diversa delle sequenze. Non avendone bisogno, si può tornare ll'utilizzo di maxpool e avgpool.
 4. Nel paper utilizzano l'algoritmo SGD, settando il momento e l'utilizzo di Nesterov. SGD non ha questi due input, mentre MomentumOptimizer e RMSPropOptimizer sì. Quale usare?
 5. Problema di fondo: io credo e sono abbastanza convinto che il modello si debba allenare per ogni Fattore di Trascrizione, perchè le previsioni devono essere differenti per ognuno di essi.
-6. 
+6. Ho randomizzato le entries di ogni esperimento prima di fare training, sembra ridurre l'errore
+7. Problema fondamentale: dal terzo batch in poi, le preidizioni sono tutte uguali. 
