@@ -5,4 +5,4 @@
 4. Nel paper utilizzano l'algoritmo SGD, settando il momento e l'utilizzo di Nesterov. SGD non ha questi due input, mentre MomentumOptimizer e RMSPropOptimizer sì. Quale usare?
 5. Problema di fondo: io credo e sono abbastanza convinto che il modello si debba allenare per ogni Fattore di Trascrizione, perchè le previsioni devono essere differenti per ognuno di essi.
 6. Ho randomizzato le entries di ogni esperimento prima di fare training, sembra ridurre l'errore
-7. Problema fondamentale: dal terzo batch in poi, le preidizioni sono tutte uguali. 
+7. Problema fondamentale: dal terzo batch in poi, le predizioni sono tutte uguali. 
