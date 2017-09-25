@@ -36,4 +36,7 @@ In particolar modo tra i dati di training le prime 500 sequenze sono quelle più
 Per questo tramite dinucleotide-shuffle (ovvero shuffle di ciascuna sequenza di input mantenendo intatte le coppie di basi), si generano le sequenze a specificità zero.
 Le stesse identiche operazioni vanno ripetute per lo studio di dati provenienti da esperimenti di tipo SELEX, con i dati che sono presenti nelal stessa forma di CHIP-seq (cambia solo la lunghezza delle sequenze di ciascun TF, variabile, alla quale è strettamente collegata la lunghezza del motif detector, concetto che viene spiegato nel codice)
 
-## 
+## PROSSIMI STEP
+- Valutare la bontà degli esperimenti
+- Testare in parallelo seguendo ciò che ha fatto Cardillo
+- Capire perchè log_loss non funziona
