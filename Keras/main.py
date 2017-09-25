@@ -75,7 +75,7 @@ def predictPBM(fileTrain,fileValid,predTF,exp='DNA'):
                       metrics=['mae'])
     
         model.fit(trainSeq, trainLabNorm,
-                  batch_size=batch_size*4,
+                  batch_size=batch_size,
                   epochs=epochs,
                   verbose=1,
                   validation_data=(validSeq, validLab))
