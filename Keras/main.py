@@ -10,6 +10,7 @@ from pbm import *
 from rnac import *
 from chip import *
 from selex import *
+#from multi_gpu import *
 
 #inserisci queste due linee all'inizio e alla fine di ogni funzione di cui si vuole verificare il tempo di esecuzione
 #start_time = time.time()
@@ -29,7 +30,7 @@ learning_rate=logsampler(0.005,0.05)
 momentum_rate=sqrtsampler(0.95,0.99)
 
 #definisco la rete neurale per tutti gli esperimenti
-def kerasNet(inpShape,exp,hidd):
+def kerasNet(inpShape,motiflen,exp,hidd):
     inputs=Input(shape=(inpShape,1)) #layer di Input
     conv=Conv1D(filters=16,kernel_size=motiflen*4,activation='relu',strides=4)(inputs) #convoluzione 1 dimensionale con strides=4
     pool=MaxPooling1D(pool_size=int(conv.shape[2]))(conv) #maxpooling
@@ -42,6 +43,7 @@ def kerasNet(inpShape,exp,hidd):
         flat=Dense(32, activation='relu',use_bias=True)(flat) #32 hidden layer con relu
     neu=Dense(1, activation='linear',use_bias=True)(flat) #passo di rete neurale
     model=Model(inputs=inputs,outputs=neu) #creo il modello collegando l'input all'output
+    print (model.summary())
     return model
 
 #################################################################################################################
@@ -66,13 +68,14 @@ def predictPBM(fileTrain,fileValid,predTF,exp='DNA'):
         trainSeq=np.reshape(trainSeq,[trainSeq.shape[0],trainSeq.shape[1],1]) #reshape necessario per il training
         print('Training data ready, with TF: %s' %(tfact))        
         
-        model = kerasNet(int(trainSeq.shape[1]),exp,True)
+        model = kerasNet(int(trainSeq.shape[1]),motiflen,exp,True)
+        #model = make_parallel(model,4)
         model.compile(loss='mean_squared_error',
                       optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6),
                       metrics=['mae'])
     
         model.fit(trainSeq, trainLabNorm,
-                  batch_size=batch_size,
+                  batch_size=batch_size*4,
                   epochs=epochs,
                   verbose=1,
                   validation_data=(validSeq, validLab))
@@ -110,7 +113,7 @@ def predictRNA(sequencefile,targetfile,tfChoose,perc,exp,invivo=''):
     test_seq=np.asarray([elem[0] for elem in test_dataset]) 
     test_seq=np.reshape(test_seq,[test_seq.shape[0],test_seq.shape[1],1])
     test_lab=np.asarray([elem[1] for elem in test_dataset])
-    model = kerasNet(int(train_seq.shape[1]),exp,True)
+    model = kerasNet(int(train_seq.shape[1]),motiflen,exp,True)
     print('Construction ok Keras network OK')
     model.compile(loss='mean_squared_error',
                       optimizer=optimizers.SGD(lr=0.0001,momentum=0.95,nesterov=True,decay=1e-6),
@@ -143,7 +146,7 @@ def predictRNA(sequencefile,targetfile,tfChoose,perc,exp,invivo=''):
 
 #predizioni di dati chipseq  
 def predictChip(trainfile,testfile):
-    train_seq, train_lab=openChip(trainfile) #estraggo dati di training
+    train_seq, train_lab,motiflen=openChip(trainfile) #estraggo dati di training
     #train_lab2=keras.utils.to_categorical(train_lab,num_classes=2)
     test_seq,test_lab=openChipTest(testfile) #estraggo dati di test
     #test_lab2=keras.utils.to_categorical(test_lab,num_classes=2)
@@ -151,16 +154,18 @@ def predictChip(trainfile,testfile):
     test_seq=np.reshape(test_seq,[test_seq.shape[0],test_seq.shape[1],1])
 #    train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
 #    train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
-    model = kerasNet(int(train_seq.shape[1]),'DNA',False)
+    model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',False)
+    #model= make_parallel(model,4)    
     model.compile(loss='mean_squared_error',
                       optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6),
                       metrics=['mae'])
-    print('Ready to Fit OK')
+    print('Ready to Fit OK') 
     model.fit(train_seq, train_lab,
-                  batch_size=batch_size,
+                  batch_size=batch_size*4,
                   epochs=epochs,
                   verbose=1)
     print('Fit complete. Now score and prediction')
+    
     score = model.evaluate(test_seq, test_lab, batch_size=batch_size,verbose=1)
     prediction = model.predict(test_seq,batch_size,verbose=1)
     prediction = np.reshape(prediction,[prediction.shape[0]]) 
@@ -181,7 +186,7 @@ def predictSelex(trainfile,testfile):
     test_seq=np.reshape(test_seq,[test_seq.shape[0],test_seq.shape[1],1])
 #    train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
 #    train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
-    model = kerasNet(int(train_seq.shape[1]),'DNA',True)
+    model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',True)
     model.compile(loss='mean_squared_error',
                       optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6),
                       metrics=['mae'])
@@ -198,13 +203,13 @@ def predictSelex(trainfile,testfile):
     return score,prediction
 
 if __name__ == '__main__':
-    pred = predictPBM('data/DREAM5.txt','data/DREAM5test.txt','TF_42')
+    pred = predictPBM('../DREAM5.txt','../DREAM5test.txt','TF_42')
     print(pred)
-#   scoreRNA,predRNA=predictRNA('data/rnac/sequences.tsv','data/rnac/targets.tsv','RNCMPT00014',0.8,'RNA')
+#   scoreRNA,predRNA=predictRNA('../data/rnac/sequences.tsv','../data/rnac/targets.tsv','RNCMPT00014',0.8,'RNA')
 #   print('score is ', scoreRNA)
-#    score,pred=predictChip('data/encode/ARID3A_HepG2_ARID3A_(NB100-279)_Stanford_AC.seq.gz','data/encode/ARID3A_HepG2_ARID3A_(NB100-279)_Stanford_B.seq.gz')
+#    score,pred=predictChip('../data/encode/ARID3A_HepG2_ARID3A_(NB100-279)_Stanford_AC.seq.gz','../data/encode/ARID3A_HepG2_ARID3A_(NB100-279)_Stanford_B.seq.gz')
 #    print('\nscore is ',score)
 #    print('pred is ',pred)
-#    score,pred=predictSelex('data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_A.seq.gz','data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_B.seq.gz')
+#    score,pred=predictSelex('../data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_A.seq.gz','../data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_B.seq.gz')
 #    print('\nscore is ',score)
 #    print('pred is ',pred)
