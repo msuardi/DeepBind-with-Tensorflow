@@ -96,7 +96,7 @@ def predictPBM(fileTrain,fileValid,predTF,exp='DNA'):
 #rnacompete
 #predizione delle sequenze di RNAcompete
 def predictRNA(sequencefile,targetfile,tfChoose,perc,exp,invivo=''):
-    train_dataset,test_dataset,orig_test_dataset=openRNA(sequencefile,targetfile,tfChoose) #carica i dati RNAc training
+    train_dataset,test_dataset,orig_test_dataset,motiflen=openRNA(sequencefile,targetfile,tfChoose) #carica i dati RNAc training
     print('Train and test dataset OK')
     train_dat,valid_dat=getValidRNA(train_dataset,perc) #carica i dati RNAc validation
     print('Train and validation separation OK')
