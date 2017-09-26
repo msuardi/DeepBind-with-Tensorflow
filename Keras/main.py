@@ -33,15 +33,15 @@ momentum_rate=sqrtsampler(0.95,0.99)
 def kerasNet(inpShape,motiflen,exp,hidd):
     inputs=Input(shape=(inpShape,1)) #layer di Input
     conv=Conv1D(filters=16,kernel_size=motiflen*4,activation='relu',strides=4)(inputs) #convoluzione 1 dimensionale con strides=4
-    pool=MaxPooling1D(pool_size=int(conv.shape[2]))(conv) #maxpooling
+    pool=MaxPooling1D(pool_size=int(conv.shape[1]))(conv) #maxpooling
     if exp=='RNA': #se l'esperimento è RNACompete si deve fare concatenazione alternata (ancora da fare) con average
-        avgpool=AveragePooling1D(pool_size=int(conv.shape[2]))(conv)
+        avgpool=AveragePooling1D(pool_size=int(conv.shape[1]))(conv)
         pool = concatenate([pool,avgpool])#TODO Alternate
-    dropout=Dropout(dropoutChoice)(pool) #dropout con la probabilità
-    flat=Flatten()(dropout) 
+    flat=Flatten()(pool) 
+    dropout=Dropout(dropoutChoice)(flat) #dropout con la probabilità
     if hidd==True: #hidden layer si o no? migliora le prestazioni?
-        flat=Dense(32, activation='relu',use_bias=True)(flat) #32 hidden layer con relu
-    neu=Dense(1, activation='linear',use_bias=True)(flat) #passo di rete neurale
+        dropout=Dense(32, activation='relu',use_bias=True)(dropout) #32 hidden layer con relu
+    neu=Dense(1, activation='linear',use_bias=True)(dropout) #passo di rete neurale
     model=Model(inputs=inputs,outputs=neu) #creo il modello collegando l'input all'output
     print (model.summary())
     return model
