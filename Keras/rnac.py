@@ -59,7 +59,7 @@ def openRNA(sequencefile,targetfile,tfChoose):
         else:
             test_data.append((seqtopad(test_dat[j][0],motiflen),test_dat[j][1]))
             
-    return train_data,test_data,test_dat
+    return train_data,test_data,test_dat,motiflen
             
 #funzione per creare il validation set come frazione del training set
 def getValidRNA(traindataset,perc):
