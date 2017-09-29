@@ -40,3 +40,4 @@ Le stesse identiche operazioni vanno ripetute per lo studio di dati provenienti 
 - Valutare la bontà degli esperimenti
 - Testare in parallelo seguendo ciò che ha fatto Cardillo
 - Capire perchè log_loss non funziona
+- Capire e implementare DeepFind
