@@ -1,7 +1,7 @@
 from __future__ import print_function
 from keras.models import Model
-from keras.layers import Dense, Dropout, Flatten, Lambda
-from keras.layers import MaxPooling1D, Conv1D, AveragePooling1D,Input,concatenate,Merge
+from keras.layers import Dense, Dropout, Flatten
+from keras.layers import MaxPooling1D, Conv1D, AveragePooling1D,Input
 from keras import optimizers
 import random
 import numpy as np
@@ -30,10 +30,6 @@ dropoutChoice=random.choice(dropoutList) #estrazione di uno dei valori a caso, d
 #determino learning_rate e momentum_rate estraendo a caso seguendo i due sampler definiti in util
 learning_rate=logsampler(0.005,0.05)
 momentum_rate=sqrtsampler(0.95,0.99)
-
-from keras import backend as K
-from keras.engine.topology import Layer
-
 
 #definisco la rete neurale per tutti gli esperimenti
 def kerasNet(inpShape,motiflen,exp,hidd):
