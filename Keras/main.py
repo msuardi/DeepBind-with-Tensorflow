@@ -1,7 +1,7 @@
 from __future__ import print_function
 from keras.models import Model
-from keras.layers import Dense, Dropout, Flatten
-from keras.layers import MaxPooling1D, Conv1D, AveragePooling1D,Input,concatenate
+from keras.layers import Dense, Dropout, Flatten, Lambda
+from keras.layers import MaxPooling1D, Conv1D, AveragePooling1D,Input,concatenate,Merge
 from keras import optimizers
 import random
 import numpy as np
@@ -10,7 +10,9 @@ from pbm import *
 from rnac import *
 from chip import *
 from selex import *
-#from multi_gpu import *
+from multi_gpu import *
+import time
+import tensorflow as tf
 
 #inserisci queste due linee all'inizio e alla fine di ogni funzione di cui si vuole verificare il tempo di esecuzione
 #start_time = time.time()
@@ -29,6 +31,10 @@ dropoutChoice=random.choice(dropoutList) #estrazione di uno dei valori a caso, d
 learning_rate=logsampler(0.005,0.05)
 momentum_rate=sqrtsampler(0.95,0.99)
 
+from keras import backend as K
+from keras.engine.topology import Layer
+
+
 #definisco la rete neurale per tutti gli esperimenti
 def kerasNet(inpShape,motiflen,exp,hidd):
     inputs=Input(shape=(inpShape,1)) #layer di Input
@@ -36,7 +42,8 @@ def kerasNet(inpShape,motiflen,exp,hidd):
     pool=MaxPooling1D(pool_size=int(conv.shape[1]))(conv) #maxpooling
     if exp=='RNA': #se l'esperimento è RNACompete si deve fare concatenazione alternata (ancora da fare) con average
         avgpool=AveragePooling1D(pool_size=int(conv.shape[1]))(conv)
-        pool = concatenate([pool,avgpool])#TODO Alternate
+        pool=AltConcatenate()([avgpool,pool])
+        print(pool)
     flat=Flatten()(pool) 
     dropout=Dropout(dropoutChoice)(flat) #dropout con la probabilità
     if hidd==True: #hidden layer si o no? migliora le prestazioni?
@@ -155,7 +162,7 @@ def predictChip(trainfile,testfile):
 #    train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
 #    train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
     model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',False)
-    #model= make_parallel(model,4)    
+    model= make_parallel(model,4)    
     model.compile(loss='mean_squared_error',
                       optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6),
                       metrics=['mae'])
@@ -203,11 +210,15 @@ def predictSelex(trainfile,testfile):
     return score,prediction
 
 if __name__ == '__main__':
-    pred = predictPBM('../DREAM5.txt','../DREAM5test.txt','TF_42')
-    print(pred)
-#   scoreRNA,predRNA=predictRNA('../data/rnac/sequences.tsv','../data/rnac/targets.tsv','RNCMPT00014',0.8,'RNA')
-#   print('score is ', scoreRNA)
+#    start_time = time.time()
+#    pred = predictPBM('../DREAM5.txt','../DREAM5test.txt','TF_42')
+#    print("--- %s seconds ---" % (time.time() - start_time))
+#    print(pred)
+    scoreRNA,predRNA=predictRNA('../data/rnac/sequences.tsv','../data/rnac/targets.tsv','RNCMPT00014',0.8,'RNA')
+    print('score is ', scoreRNA)
+    print('pred is ',predRNA)    
 #    score,pred=predictChip('../data/encode/ARID3A_HepG2_ARID3A_(NB100-279)_Stanford_AC.seq.gz','../data/encode/ARID3A_HepG2_ARID3A_(NB100-279)_Stanford_B.seq.gz')
+#    print("--- %s seconds ---" % (time.time() - start_time))    
 #    print('\nscore is ',score)
 #    print('pred is ',pred)
 #    score,pred=predictSelex('../data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_A.seq.gz','../data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_B.seq.gz')
