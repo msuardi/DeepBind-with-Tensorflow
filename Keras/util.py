@@ -167,10 +167,15 @@ def padsequence(sequence,maxlength):
     
 #funzione di perdita per CHIP-seq e SELEX, non è di default in Kears
 #TODO va in loop 
-def log_loss(label,prediction):
+def log_sigma_loss(label,prediction):
     def sigma(x):
         return 1/(1+math.e**(-x))
+#    sigm=K.sigmoid(prediction)
+#    return K.mean(-label*K.log(sigm) - (1-label)*K.log(1-sigm))
     return K.mean(-label*K.log(sigma(prediction)) - (1-label)*K.log(1-sigma(prediction)))
+
+def log_loss(label,prediction):
+    return K.mean(-label*K.log(prediction) - (1-label)*K.log(1-prediction))
 
 #funzione per creare le sequenze di training con specificità 0 nel caso di CHIP e SELEX (forniti solo quelli "positivi")
 def dinucshuffle(sequence):
@@ -178,4 +183,41 @@ def dinucshuffle(sequence):
     random.shuffle(b)
     d=''.join([str(x) for x in b])
     return d
+    
+#funzione di calcolo della AUC ripresa da deepfind.py del codice originale
+def calc_auc(z, y, want_curve = False):
+   """Given predictions z and 0/1 targets y, computes AUC with optional ROC curve"""
+   z = z.ravel()
+   y = y.ravel()
+   assert len(z) == len(y)
+
+# Remove any pair with NaN in y    
+   m = ~np.isnan(y)
+   y = y[m]
+   z = z[m]
+   assert np.all(np.logical_or(y==0, y==1)), "Cannot calculate AUC for non-binary targets"
+
+   order = np.argsort(z,axis=0)[::-1].ravel()   # Sort by decreasing order of prediction strength
+   z = z[order]
+   y = y[order]
+   npos = np.count_nonzero(y)      # Total number of positives.
+   nneg = len(y)-npos              # Total number of negatives.
+   if nneg == 0 or npos == 0:
+       return (np.nan,None) if want_curve else 1
+
+   n = len(y)
+   fprate = np.zeros((n+1,1))
+   tprate = np.zeros((n+1,1))
+   ntpos,nfpos = 0.,0.
+   for i,yi in enumerate(y):
+       if yi: ntpos += 1
+       else:  nfpos += 1
+       tprate[i+1] = ntpos/npos
+       fprate[i+1] = nfpos/nneg
+   auc = float(np.trapz(tprate,fprate,axis=0))
+   if want_curve:
+       curve = np.hstack([fprate,tprate])
+       return auc, curve
+   return auc
+
     
