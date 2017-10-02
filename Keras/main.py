@@ -31,8 +31,9 @@ dropoutChoice=random.choice(dropoutList) #estrazione di uno dei valori a caso, d
 learning_rate=logsampler(0.005,0.05)
 momentum_rate=sqrtsampler(0.95,0.99)
 
+
 #definisco la rete neurale per tutti gli esperimenti
-def kerasNet(inpShape,motiflen,exp,hidd):
+def kerasNet(inpShape,motiflen,exp,hidd,sigmoid):
     inputs=Input(shape=(inpShape,1)) #layer di Input
     conv=Conv1D(filters=16,kernel_size=motiflen*4,activation='relu',strides=4)(inputs) #convoluzione 1 dimensionale con strides=4
     pool=MaxPooling1D(pool_size=int(conv.shape[1]))(conv) #maxpooling
@@ -44,7 +45,11 @@ def kerasNet(inpShape,motiflen,exp,hidd):
     dropout=Dropout(dropoutChoice)(flat) #dropout con la probabilità
     if hidd==True: #hidden layer si o no? migliora le prestazioni?
         dropout=Dense(32, activation='relu',use_bias=True)(dropout) #32 hidden layer con relu
-    neu=Dense(1, activation='linear',use_bias=True)(dropout) #passo di rete neurale
+    if sigmoid==True:
+        actfun='sigmoid'
+    else:
+        actfun='linear'
+    neu=Dense(1, activation=actfun,use_bias=True)(dropout) #passo di rete neurale
     model=Model(inputs=inputs,outputs=neu) #creo il modello collegando l'input all'output
     print (model.summary())
     return model
@@ -157,14 +162,14 @@ def predictChip(trainfile,testfile):
     test_seq=np.reshape(test_seq,[test_seq.shape[0],test_seq.shape[1],1])
 #    train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
 #    train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
-    model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',False)
-    model= make_parallel(model,4)    
-    model.compile(loss='mean_squared_error',
-                      optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6),
-                      metrics=['mae'])
+    print(train_seq.shape,train_lab.shape)
+    model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',True,True)
+    #model= make_parallel(model,4)    
+    model.compile(loss=log_loss,
+                      optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6))
     print('Ready to Fit OK') 
     model.fit(train_seq, train_lab,
-                  batch_size=batch_size*4,
+                  batch_size=batch_size,
                   epochs=epochs,
                   verbose=1)
     print('Fit complete. Now score and prediction')
@@ -172,8 +177,9 @@ def predictChip(trainfile,testfile):
     score = model.evaluate(test_seq, test_lab, batch_size=batch_size,verbose=1)
     prediction = model.predict(test_seq,batch_size,verbose=1)
     prediction = np.reshape(prediction,[prediction.shape[0]]) 
+    auc = calc_auc(prediction,test_lab)
     #statsRNA(orig_test_dataset,prediction,test_lab)
-    return score,prediction
+    return score,prediction,auc
     
 #works with msq, log_loss goes to nan always...
 ############################################################
@@ -189,10 +195,9 @@ def predictSelex(trainfile,testfile):
     test_seq=np.reshape(test_seq,[test_seq.shape[0],test_seq.shape[1],1])
 #    train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
 #    train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
-    model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',True)
-    model.compile(loss='mean_squared_error',
-                      optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6),
-                      metrics=['mae'])
+    model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',True,True)
+    model.compile(loss=log_loss,
+                      optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6))
     print('Ready to Fit OK')
     model.fit(train_seq, train_lab,
                   batch_size=batch_size,
@@ -201,22 +206,27 @@ def predictSelex(trainfile,testfile):
     print('Fit complete. Now score and prediction')
     score = model.evaluate(test_seq, test_lab, batch_size=batch_size,verbose=1)
     prediction = model.predict(test_seq,batch_size,verbose=1)
-    prediction = np.reshape(prediction,[prediction.shape[0]]) 
+    prediction = np.reshape(prediction,[prediction.shape[0]])
+    auc = calc_auc(prediction,test_lab)
     #statsRNA(orig_test_dataset,prediction,test_lab)
-    return score,prediction
+    return score,prediction,auc
+
+
+
 
 if __name__ == '__main__':
 #    start_time = time.time()
 #    pred = predictPBM('../DREAM5.txt','../DREAM5test.txt','TF_42')
 #    print("--- %s seconds ---" % (time.time() - start_time))
 #    print(pred)
-    scoreRNA,predRNA=predictRNA('../data/rnac/sequences.tsv','../data/rnac/targets.tsv','RNCMPT00014',0.8,'RNA')
-    print('score is ', scoreRNA)
-    print('pred is ',predRNA)    
-#    score,pred=predictChip('../data/encode/ARID3A_HepG2_ARID3A_(NB100-279)_Stanford_AC.seq.gz','../data/encode/ARID3A_HepG2_ARID3A_(NB100-279)_Stanford_B.seq.gz')
+#    scoreRNA,predRNA=predictRNA('../data/rnac/sequences.tsv','../data/rnac/targets.tsv','RNCMPT00014',0.8,'RNA')
+#    print('score is ', scoreRNA)
+#    print('pred is ',predRNA)    
+    score,pred,auc=predictChip('../data/encode/ARID3A_HepG2_ARID3A_(NB100-279)_Stanford_AC.seq.gz','../data/encode/ARID3A_HepG2_ARID3A_(NB100-279)_Stanford_B.seq.gz')
 #    print("--- %s seconds ---" % (time.time() - start_time))    
-#    print('\nscore is ',score)
-#    print('pred is ',pred)
+    print('\nscore is ',score)
+    print('\npred is ',pred)
+    print('\nauc is ',auc)
 #    score,pred=predictSelex('../data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_A.seq.gz','../data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_B.seq.gz')
 #    print('\nscore is ',score)
 #    print('pred is ',pred)
