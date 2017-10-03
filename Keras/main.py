@@ -3,16 +3,19 @@ from keras.models import Model
 from keras.layers import Dense, Dropout, Flatten
 from keras.layers import MaxPooling1D, Conv1D, AveragePooling1D,Input
 from keras import optimizers
+from keras.callbacks import EarlyStopping 
 import random
 import numpy as np
-from util import *
-from pbm import *
-from rnac import *
-from chip import *
-from selex import *
-from multi_gpu import *
+from util import logsampler,sqrtsampler, AltConcatenate, log_loss,calc_auc
+from pbm import openPBM,getValidPBM,predictSequencesPBM
+from rnac import openRNA,getValidRNA,testRNAVivo
+from chip import openChip, openChipTest
+from selex import getMotiflenSelex,openSelex,openSelexTest
 import time
-import tensorflow as tf
+import math
+
+#from multi_gpu import *
+#import tensorflow as tf
 
 #inserisci queste due linee all'inizio e alla fine di ogni funzione di cui si vuole verificare il tempo di esecuzione
 #start_time = time.time()
@@ -53,6 +56,7 @@ def kerasNet(inpShape,motiflen,exp,hidd,sigmoid):
     model=Model(inputs=inputs,outputs=neu) #creo il modello collegando l'input all'output
     print (model.summary())
     return model
+    
 
 #################################################################################################################
 #PBM    
@@ -62,12 +66,12 @@ def predictPBM(fileTrain,fileValid,predTF,exp='DNA'):
     bestScore=0 #salvo il bestScore e il bestModel per il testing
     bestModel=None 
     bestTf=''
-    validSeq,validLab,validStdDev,validAvg,arrayType=createValidation(fileValid,predTF,motiflen) #apre il validation set 
+    validSeq,validLab,validStdDev,validAvg,arrayType=getValidPBM(fileValid,predTF,motiflen) #apre il validation set 
     print('Validation Done')
     dictionary=openPBM(fileTrain,motiflen,True) #apre il training set
     print('I have created the dictionary of %s' %(otherArray[arrayType]))
     listTf=list(dictionary.keys())
-    predSeq=predictSequences(fileTrain,arrayType,motiflen) #crea le sequenze da predire
+    predSeq=predictSequencesPBM(fileTrain,arrayType,motiflen) #crea le sequenze da predire
     print('I have collected the predict sequences, entering in the predict cycle...')
     for tfact in listTf: #per ogni fattore di trascrizione in input creo il modello, faccio fitting e valuto la prestazione sul validation
         trainSeq=np.asarray([elem[0] for elem in dictionary[tfact]]) #estraggo solo le sequenze
@@ -76,7 +80,7 @@ def predictPBM(fileTrain,fileValid,predTF,exp='DNA'):
         trainSeq=np.reshape(trainSeq,[trainSeq.shape[0],trainSeq.shape[1],1]) #reshape necessario per il training
         print('Training data ready, with TF: %s' %(tfact))        
         
-        model = kerasNet(int(trainSeq.shape[1]),motiflen,exp,True)
+        model = kerasNet(int(trainSeq.shape[1]),motiflen,exp,True,False)
         #model = make_parallel(model,4)
         model.compile(loss='mean_squared_error',
                       optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6),
@@ -121,7 +125,7 @@ def predictRNA(sequencefile,targetfile,tfChoose,perc,exp,invivo=''):
     test_seq=np.asarray([elem[0] for elem in test_dataset]) 
     test_seq=np.reshape(test_seq,[test_seq.shape[0],test_seq.shape[1],1])
     test_lab=np.asarray([elem[1] for elem in test_dataset])
-    model = kerasNet(int(train_seq.shape[1]),motiflen,exp,True)
+    model = kerasNet(int(train_seq.shape[1]),motiflen,exp,True,False)
     print('Construction ok Keras network OK')
     model.compile(loss='mean_squared_error',
                       optimizer=optimizers.SGD(lr=0.0001,momentum=0.95,nesterov=True,decay=1e-6),
@@ -135,7 +139,7 @@ def predictRNA(sequencefile,targetfile,tfChoose,perc,exp,invivo=''):
     print('Fit complete. Now score and prediction')
     if invivo!='': #faccio testing su dati in vivo
         prediction_res=[]
-        test_seq2=testRnaVivo(invivo,16,41)
+        test_seq2=testRNAVivo(invivo,16,41)
         for testseq in test_seq2:
             test_seq2=np.reshape(test_seq2,[test_seq2.shape[0],test_seq2.shape[1],1])
             prediction = model.predict(test_seq2,batch_size,verbose=1)
@@ -160,17 +164,17 @@ def predictChip(trainfile,testfile):
     #test_lab2=keras.utils.to_categorical(test_lab,num_classes=2)
     train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
     test_seq=np.reshape(test_seq,[test_seq.shape[0],test_seq.shape[1],1])
-#    train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
-#    train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
+
     print(train_seq.shape,train_lab.shape)
     model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',True,True)
     #model= make_parallel(model,4)    
     model.compile(loss=log_loss,
                       optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6))
     print('Ready to Fit OK') 
+    callbacks=[EarlyStopping(monitor='loss', min_delta=math.nan, patience=1)]
     model.fit(train_seq, train_lab,
                   batch_size=batch_size,
-                  epochs=epochs,
+                  epochs=epochs,callbacks=callbacks,
                   verbose=1)
     print('Fit complete. Now score and prediction')
     
@@ -178,8 +182,7 @@ def predictChip(trainfile,testfile):
     prediction = model.predict(test_seq,batch_size,verbose=1)
     prediction = np.reshape(prediction,[prediction.shape[0]]) 
     auc = calc_auc(prediction,test_lab)
-    #statsRNA(orig_test_dataset,prediction,test_lab)
-    return score,prediction,auc
+    return score,prediction,auc,model
     
 #works with msq, log_loss goes to nan always...
 ############################################################
@@ -193,40 +196,41 @@ def predictSelex(trainfile,testfile):
     #test_lab2=keras.utils.to_categorical(test_lab,num_classes=2)
     train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
     test_seq=np.reshape(test_seq,[test_seq.shape[0],test_seq.shape[1],1])
-#    train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
-#    train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
     model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',True,True)
     model.compile(loss=log_loss,
                       optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6))
     print('Ready to Fit OK')
+    callbacks=[EarlyStopping(monitor='loss', min_delta=math.nan, patience=1)]
     model.fit(train_seq, train_lab,
                   batch_size=batch_size,
-                  epochs=epochs,
+                  epochs=epochs, callbacks=callbacks,
                   verbose=1)
     print('Fit complete. Now score and prediction')
     score = model.evaluate(test_seq, test_lab, batch_size=batch_size,verbose=1)
     prediction = model.predict(test_seq,batch_size,verbose=1)
     prediction = np.reshape(prediction,[prediction.shape[0]])
     auc = calc_auc(prediction,test_lab)
-    #statsRNA(orig_test_dataset,prediction,test_lab)
-    return score,prediction,auc
-
+    return score,prediction,auc,model
 
 
 
 if __name__ == '__main__':
-#    start_time = time.time()
+    start_time = time.time()
 #    pred = predictPBM('../DREAM5.txt','../DREAM5test.txt','TF_42')
 #    print("--- %s seconds ---" % (time.time() - start_time))
 #    print(pred)
 #    scoreRNA,predRNA=predictRNA('../data/rnac/sequences.tsv','../data/rnac/targets.tsv','RNCMPT00014',0.8,'RNA')
 #    print('score is ', scoreRNA)
 #    print('pred is ',predRNA)    
-    score,pred,auc=predictChip('../data/encode/ARID3A_HepG2_ARID3A_(NB100-279)_Stanford_AC.seq.gz','../data/encode/ARID3A_HepG2_ARID3A_(NB100-279)_Stanford_B.seq.gz')
-#    print("--- %s seconds ---" % (time.time() - start_time))    
-    print('\nscore is ',score)
-    print('\npred is ',pred)
-    print('\nauc is ',auc)
-#    score,pred=predictSelex('../data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_A.seq.gz','../data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_B.seq.gz')
+#    score,pred,auc,model=predictChip('../data/encode/ARID3A_HepG2_ARID3A_(NB100-279)_Stanford_AC.seq.gz','../data/encode/ARID3A_HepG2_ARID3A_(NB100-279)_Stanford_B.seq.gz')
+#
 #    print('\nscore is ',score)
-#    print('pred is ',pred)
+#    print('\npred is ',pred)
+#    print('\nauc is ',auc)
+    
+    #con model.get_weights posso ottenere i pesi del modello
+    score,pred,auc,model=predictSelex('../data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_A.seq.gz','../data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_B.seq.gz')
+    print('\nscore is ',score)
+    print('pred is ',pred)
+
+    print("--- %s seconds ---" % (time.time() - start_time))    
