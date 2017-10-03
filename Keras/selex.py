@@ -2,7 +2,7 @@ import gzip
 import random
 import csv
 import numpy as np
-from util import *
+from util import seqtopad,dinucshuffle
 
 #funzione per ottenere dal nome del file la lunghezza della sequenza e ritornare la corrispondente motiflen
 def getMotiflenSelex(filename):
