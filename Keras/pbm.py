@@ -1,11 +1,10 @@
 import csv
 import random
 import numpy as np
-import time
-from util import *
+from util import seqtopad,reverse
 
 #funzione per caricare il validation set, ovvero il file con 66 TF di un solo tipo 
-def openValid(filename,name,motlen):
+def openValidPBM(filename,name,motlen):
     resseq=[]
     with open(filename,'r') as data:
         next(data)
@@ -21,8 +20,8 @@ def openValid(filename,name,motlen):
     return np.asarray(resdat),np.asarray(reslab),arrayType
     
 #funzione che crea il validation set
-def createValidation(filename,tfName,motlen):
-    validseq,validlab,arraytype=openValid(filename,tfName,motlen)
+def getValidPBM(filename,tfName,motlen):
+    validseq,validlab,arraytype=openValidPBM(filename,tfName,motlen)
     validstd=np.std(validlab)
     validavg=np.average(validlab)
     validlab=(validlab - validavg)/validstd #migliora le performance?
@@ -52,7 +51,7 @@ def openPBM(filename,motlen,reverseMode=False):
     return diz
 
 #funzione che crea la lista delle sequenze per cui deve essere predetta la specificità (sono sempre le stesse)
-def predictSequences(filename,arrayType,motlen):
+def predictSequencesPBM(filename,arrayType,motlen):
     with open(filename,'r') as data:
         resseq=[]
         next(data)
@@ -65,4 +64,3 @@ def predictSequences(filename,arrayType,motlen):
     resseq=np.asarray(resseq)
     testseq=np.reshape(resseq,[resseq.shape[0],resseq.shape[1],1])    
     return testseq
-
