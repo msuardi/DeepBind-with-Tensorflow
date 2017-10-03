@@ -4,7 +4,8 @@ import numpy as np
 from keras import optimizers
 from keras.layers import Dense,Dropout
 from keras.models import Sequential
-from util import *
+from util import log_loss,logsampler,sqrtsampler,calc_auc
+import math
 
 
 #cartella di origine dei file necessari
@@ -152,6 +153,7 @@ def findNet(inpShape):
     model.add(Dense(1,activation='sigmoid'))
     return model
     
+
 def deepFind():
     num_fold=5
     list_auc=list()
