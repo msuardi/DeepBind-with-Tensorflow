@@ -2,7 +2,7 @@ import random
 import gzip
 import csv
 import numpy as np
-from util import *
+from util import seqtopad,dinucshuffle
 
 #funzione per aprire il file di training di CHIP-seq
 def openChip(sequencefile):
