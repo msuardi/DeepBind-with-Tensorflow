@@ -19,6 +19,9 @@ La "sfida" richiedeva di predire le specificità di altri 66 fattori di trascriz
 Per questo, essendo disponibili al download questi dati, ho pensato di utilizzare i dati originali stessi.
 Dovendo predire le specificità di un fattore di trascrizione X per l'esperimento ME (noti quindi i risultati per HK), ho deciso di allenare un modello per ciascuno dei 20 fattori di trascrizione del training, usando come validation set l'insieme delle specificità di X per l'esperimento HK.
 Avendo il risultato di validation error migliore, ho predetto la specificità rimanenti usando quel modello stesso.
+In questo caso ho modificato le specificità normalizzando ciascun punteggio, in quanto non facendolo portava ad avere tutte le predizioni uguali.
+I dati forniti dagli autori sono differenti, suddivisi in due fold e con valori di lunghezza delle sequenze e specificità diversi, ho preferito perciò usare i dati originali.
+
 
 ### RNACompete
 RNACompete è un esperimento simile al precedente, utilizzando però sequenze di RNA. 
