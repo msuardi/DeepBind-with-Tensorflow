@@ -36,8 +36,21 @@ In particolar modo tra i dati di training le prime 500 sequenze sono quelle più
 Per questo tramite dinucleotide-shuffle (ovvero shuffle di ciascuna sequenza di input mantenendo intatte le coppie di basi), si generano le sequenze a specificità zero.
 Le stesse identiche operazioni vanno ripetute per lo studio di dati provenienti da esperimenti di tipo SELEX, con i dati che sono presenti nelal stessa forma di CHIP-seq (cambia solo la lunghezza delle sequenze di ciascun TF, variabile, alla quale è strettamente collegata la lunghezza del motif detector, concetto che viene spiegato nel codice)
 
+## DEEPFIND
+Come ultima parte del lavoro, gli autori del paper hanno realizzato un programma chiamato DeepFind, il cui compito è quello di capire quanto può essere deleteria una variazione di un nucleotide in una sequenza genomica.
+Per farlo hanno considerato delle SNV (Single-Nucleotide Variation) presenti in una ricerca precedente, e hanno suddiviso i dati in due cartelle: quelle dei dati derivati (cioè in cui sono presenti SNV corrispondenti a variazioni di alleli, non dannose) e quelle dei dati simulati (corrispondenti alle potenzialmente pericolose SNV).
+A questo punto hanno calcolato il punteggio di queste sequenze utilizzando CHIP e Selex, per poi assegnare ai primi dati etichetta 0, ai secondi 1.
+Usando come input le specificità e come target 0/1, hanno creato una rete neurale per determinare quanto bene fossero realizzati i modelli CHIP e Selex, ottenendo un'alta AUC, 0.71.
+In questo campo ho modificato il file da loro scritto in modo da essere compatibile con tensorflow, ottenendo risultati simili mantenendo un basso numero di epoche; alzandole infatti la loss tende a nan.
+
 ## PROSSIMI STEP
 - Valutare la bontà degli esperimenti
 - Testare in parallelo seguendo ciò che ha fatto Cardillo
 - Capire perchè log_loss non funziona
-- Capire e implementare DeepFind
+
+## NOTE AGGIUNTIVE
+Per evitare di proseguire nelle epoche con loss nan, ho inserito una callback, che fa early-termination in caso la loss finisca a nan. 
+Inoltre ho inserito un'altra callback, chiamata tensorboard:
+TensorBoard(log_dir='./', histogram_freq=0,write_graph=True, write_images=True)
+Così facendo posso poi eseguire nella cartella corrente nella shell "tensorboard --logdir=./", accedere a localhost:6006 e trovare una rappresentazione grafica interessante del training effettuato.
+
