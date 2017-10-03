@@ -219,5 +219,3 @@ def calc_auc(z, y, want_curve = False):
        curve = np.hstack([fprate,tprate])
        return auc, curve
    return auc
-
-    
