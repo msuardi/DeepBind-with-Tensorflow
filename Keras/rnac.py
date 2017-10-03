@@ -3,7 +3,7 @@ import math
 import numpy as np
 import random
 import itertools
-from util import *
+from util import seqtopad,padsequence
 from scipy.stats import pearsonr,spearmanr
 from sklearn import metrics
 
@@ -130,7 +130,7 @@ def statsRNA(orig_dataset,predictionarray,testlab):
     
 #TODO testing in parallel
 #funzione per effettuare il testing su dati in vivo, presenti in una sottocartella di RNACompete
-def testRnaVivo(sequencefile,motiflen,maxlenseq):
+def testRNAVivo(sequencefile,motiflen,maxlenseq):
     with open(sequencefile,'r') as data:
         lines=data.readlines()
         test=[]
@@ -142,4 +142,3 @@ def testRnaVivo(sequencefile,motiflen,maxlenseq):
                 temp.append(seqtopad(elem,motiflen))
         test.append(temp)
     return np.asarray(test)
-
