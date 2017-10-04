@@ -3,7 +3,7 @@ import math
 import numpy as np
 import random
 import itertools
-from util import seqtopad,padsequence
+from util import seqtopad,padsequence,calc_auc
 from scipy.stats import pearsonr,spearmanr
 from sklearn import metrics
 
@@ -82,15 +82,20 @@ def Zscore(sequences,valuesOrig,valuesPred,listSeven):
         orig.append(tempOrig)
         pred.append(tempPred)
         
-    zscOrig=[np.median(elem) for elem in orig if len(elem)!=0]
+    zscOrig=np.array([np.median(elem) for elem in orig if len(elem)!=0])
+    zscOrig=(zscOrig-np.average(zscOrig))/np.std(zscOrig)
     zscPred=[np.median(elem) for elem in pred if len(elem)!=0]
+    zscPred=(zscPred-np.average(zscPred))/np.std(zscPred)
     return zscOrig,zscPred
 
 #funzione per ritornare array per auc
-def aucscore(sequences,lista):
-    aucl=np.array([l in seq for l in lista for seq in sequences])
-    auclc=np.array([aucl[i:i+len(sequences)] for i in range(0,len(sequences),len(sequences))])
-    return auclc
+def aucscore(sequences,values,lista):
+    aucl=np.array([l in seq for l in lista for seq in sequences]) 
+    #ogni sequenza è un array interno. Ogni elemento dell'array interno
+    #ogni elemento dell'array interno è 0 o 1 in base al fatto che il 7-mero i sia sottosequenza della sequenza
+    #auclc=np.array([aucl[i:i+len(sequences)] for i in range(0,len(sequences),len(sequences))])
+    auclist=[calc_auc(values,aucli) for aucli in aucl]
+    return auclist,aucl
 
 #funzione per generare la lista di tutti i 7-meri di RNA, serve per misure di accuratezza di RNACompete
 def gen7list():
@@ -103,30 +108,32 @@ def statsRNA(orig_dataset,predictionarray,testlab):
     listSev=gen7list()
     sequences=[elem[0] for elem in orig_dataset]
     values=[elem[1] for elem in orig_dataset]
-    zscoreorig,zscorepred=Zscore(sequences,values,predictionarray)
-    aucSc=aucscore(sequences,listSev)
+    zscoreorig,zscorepred=Zscore(sequences,values,predictionarray,listSev)
+    aucSc,yesornot=aucscore(sequences,values,listSev)
     coeffNorm=(pearsonr(predictionarray,testlab),spearmanr(predictionarray,testlab))
     coeffZ=(pearsonr(zscoreorig,zscorepred),spearmanr(zscoreorig,zscorepred))
-    indYes=np.asarray([elem*predictionarray for elem in aucSc])
-    indYesSort=np.asarray([np.argsort(elem)[(len(elem)/2):] for elem in indYes])
-    indNo=np.asarray([np.invert(elem)*predictionarray for elem in aucSc])
-    indNoSort=np.asarray([np.argsort(elem)[(len(elem)/2):] for elem in indNo])
-    for i in len(indYesSort):
-        indYesSort[i].extend(indNoSort[i])
-    pred=[]
-    lab=[]
-    for j in len(indYesSort):
-        temp=[values[i] for i in indYesSort[j]]
-        templ=[aucSc[i] for i in indYesSort[j]]
-        pred.append(temp)
-        lab.append(templ)
-    pred=np.asarray(pred)
-    lab=np.asarray(lab)
-    auc=[]
-    for i in len(pred):
-        auc.append(metrics.auc(pred[i],lab[i]))
-    eScore=auc-np.repeat(0.5,len(auc))
-    return auc,eScore,coeffNorm,coeffZ
+    #E-SCORE (page 15 paper supp)
+    valYes=np.asarray([[values[i] for i in range(len(values))] for sev in listSev if sev in sequences[i]])
+    indYesSort=np.asarray([np.argsort(el) for el in valYes])
+    yesornotIN=np.asarray([yesornot[i][indYesSort[i]] for i in range(len(indYesSort))])
+    yesornotINspl=np.asarray([elem[(len(elem)/2):] for elem in yesornotIN])
+    valYes=np.asarray([valYes[i][indYesSort[i]] for i in range(len(indYesSort))])
+    valYesspl=np.asarray([elem[(len(elem)/2):] for elem in valYes])
+    
+    valNo=np.asarray([values[i] for i in range(len(values)) for sev in listSev if sev not in sequences[i]])    
+    indNoSort=np.asarray([np.argsort(el) for el in valNo])
+    yesornotNOT=np.asarray([yesornot[i][indNoSort[i]] for i in range(len(indNoSort))])
+    yesornotNOTspl=np.asarray([elem[(len(elem)/2):] for elem in yesornotNOT])
+    valNo=np.asarray([valNo[i][indNoSort[i]] for i in range(len(indNoSort))])
+    valNospl=np.asarray([elem[(len(elem)/2):] for elem in valNo])
+
+    intensities=np.asarray([valYesspl[i].extend(valNospl[i]) for i in range(len(valYesspl))])
+    labels=np.asarray(yesornotINspl[i].extend(yesornotNOTspl[i]) for i in range(len(yesornotINspl)))
+    
+    aucscore=np.asarray([calc_auc(intensities[i],labels[i]) for i in range(len(intensities))])
+    escore=aucscore-0.5
+
+    return coeffNorm,coeffZ,aucscore,escore
     
 #TODO testing in parallel
 #funzione per effettuare il testing su dati in vivo, presenti in una sottocartella di RNACompete
@@ -142,3 +149,4 @@ def testRNAVivo(sequencefile,motiflen,maxlenseq):
                 temp.append(seqtopad(elem,motiflen))
         test.append(temp)
     return np.asarray(test)
+
