@@ -3,14 +3,16 @@ from keras.models import Model
 from keras.layers import Dense, Dropout, Flatten
 from keras.layers import MaxPooling1D, Conv1D, AveragePooling1D,Input
 from keras import optimizers
-from keras.callbacks import EarlyStopping 
+from keras.callbacks import EarlyStopping,TensorBoard
+from keras.utils import plot_model
 import random
 import numpy as np
-from util import logsampler,sqrtsampler, AltConcatenate, log_loss,calc_auc
-from pbm import openPBM,getValidPBM,predictSequencesPBM
-from rnac import openRNA,getValidRNA,testRNAVivo
-from chip import openChip, openChipTest
-from selex import getMotiflenSelex,openSelex,openSelexTest
+from util import *
+from pbm import *
+from rnac import *
+from chip import *
+from selex import *
+from multi_gpu import *
 import time
 import math
 
@@ -25,7 +27,6 @@ batch_size = 64 #fissata sempre, su deepfind dovrebbe essere più alta
 epochs = 20 #numero di cicli di training, settabile a piacere -> più è alta più dovrebbe essere accurato il training
 bases='ACGT'
 basesRNA='ACGU'
-dictpad={'A':[1.,0.,0.,0.],'C':[0.,1.,0.,0.],'G':[0.,0.,1.,0.],'T':[0.,0.,0.,1.],'U':[0.,0.,0.,1.],'N':[0.25,0.25,0.25,0.25]}
 otherArray={'ME':'HK', 'HK':'ME'} #dizionario per ottenere in PBM le sequenze da predire 
 dropoutList=[0.5,0.75,1.0] #lista dei possibili valori di dropout
 dropoutChoice=random.choice(dropoutList) #estrazione di uno dei valori a caso, dovrebbe essere estratto tramite Bernoulli
@@ -126,24 +127,28 @@ def predictRNA(sequencefile,targetfile,tfChoose,perc,exp,invivo=''):
     test_seq=np.reshape(test_seq,[test_seq.shape[0],test_seq.shape[1],1])
     test_lab=np.asarray([elem[1] for elem in test_dataset])
     model = kerasNet(int(train_seq.shape[1]),motiflen,exp,True,False)
+    train_lab_sta=normalize(train_lab)
     print('Construction ok Keras network OK')
+    model= make_parallel(model,4)
     model.compile(loss='mean_squared_error',
                       optimizer=optimizers.SGD(lr=0.0001,momentum=0.95,nesterov=True,decay=1e-6),
                       metrics=['mae'])
     print('Ready to Fit OK')
+    callbacks=[TensorBoard(log_dir='./', histogram_freq=0,  
+          write_graph=True, write_images=True)]
     model.fit(train_seq, train_lab_norm,
-                  batch_size=batch_size,
+                  batch_size=batch_size*4,
                   epochs=epochs,
-                  verbose=1,
+                  verbose=1,callbacks=callbacks,
                   validation_data=(valid_seq, valid_lab_norm))
     print('Fit complete. Now score and prediction')
     if invivo!='': #faccio testing su dati in vivo
         prediction_res=[]
         test_seq2=testRNAVivo(invivo,16,41)
         for testseq in test_seq2:
-            test_seq2=np.reshape(test_seq2,[test_seq2.shape[0],test_seq2.shape[1],1])
-            prediction = model.predict(test_seq2,batch_size,verbose=1)
-            prediction_res.append(prediction)
+            test_seq=np.reshape(test_seq,[test_seq.shape[0],test_seq.shape[1],1])
+            prediction = model.predict(test_seq,batch_size,verbose=1)
+            prediction_res.append(np.average(prediction))
         return prediction_res
         
     score = model.evaluate(test_seq, test_lab, verbose=1)
@@ -151,7 +156,7 @@ def predictRNA(sequencefile,targetfile,tfChoose,perc,exp,invivo=''):
     prediction = prediction*np.std(test_lab) + np.average(test_lab)
     prediction = np.reshape(prediction,[prediction.shape[0]]) 
     #statsRNA(orig_test_dataset,prediction,test_lab)
-    return score,prediction
+    return score,prediction,model
         
 ##########################################################################################################################
 #ENCODECHIP
@@ -167,14 +172,15 @@ def predictChip(trainfile,testfile):
 
     print(train_seq.shape,train_lab.shape)
     model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',True,True)
-    #model= make_parallel(model,4)    
+    model= make_parallel(model,4)
     model.compile(loss=log_loss,
                       optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6))
     print('Ready to Fit OK') 
-    callbacks=[EarlyStopping(monitor='loss', min_delta=math.nan, patience=1)]
+    #callbacks=[EarlyStopping(monitor='loss', min_delta=math.nan, patience=1),TensorBoard(log_dir='./', histogram_freq=0,  
+         # write_graph=True, write_images=True)]
     model.fit(train_seq, train_lab,
                   batch_size=batch_size,
-                  epochs=epochs,callbacks=callbacks,
+                  epochs=epochs,#callbacks=callbacks,
                   verbose=1)
     print('Fit complete. Now score and prediction')
     
@@ -200,10 +206,10 @@ def predictSelex(trainfile,testfile):
     model.compile(loss=log_loss,
                       optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6))
     print('Ready to Fit OK')
-    callbacks=[EarlyStopping(monitor='loss', min_delta=math.nan, patience=1)]
+    #callbacks=[EarlyStopping(monitor='loss', min_delta=math.nan, patience=1)]
     model.fit(train_seq, train_lab,
                   batch_size=batch_size,
-                  epochs=epochs, callbacks=callbacks,
+                  epochs=epochs,# callbacks=callbacks,
                   verbose=1)
     print('Fit complete. Now score and prediction')
     score = model.evaluate(test_seq, test_lab, batch_size=batch_size,verbose=1)
@@ -227,10 +233,11 @@ if __name__ == '__main__':
 #    print('\nscore is ',score)
 #    print('\npred is ',pred)
 #    print('\nauc is ',auc)
+    #plot_model(model, to_file='model.png', show_shapes=False, show_layer_names=True, rankdir='TB')
     
     #con model.get_weights posso ottenere i pesi del modello
     score,pred,auc,model=predictSelex('../data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_A.seq.gz','../data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_B.seq.gz')
     print('\nscore is ',score)
-    print('pred is ',pred)
-
+    print('\npred is ',pred)
+    print('\nauc is ', auc)
     print("--- %s seconds ---" % (time.time() - start_time))    
