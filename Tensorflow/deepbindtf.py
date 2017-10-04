@@ -5,7 +5,7 @@ import math
 import random
 import gzip
 from scipy.stats import bernoulli
-import zipfile as zp
+
 
 nummotif=16 #number of motifs to discover
 bases='ACGT' #DNA bases
@@ -89,7 +89,8 @@ def convolution(weights, inp, motif):
         iconv=tf.nn.conv2d(inp,other,strides=[1,1,1,1],padding='VALID')
         conv=tf.concat([conv,iconv],0)
     return conv
-    
+
+#ho definito una classe esperimento, genitore di tutti gli esperimenti fatti
 class Experiment:
     def __init__(self,filename,motiflen):
         self.file=filename
@@ -98,16 +99,25 @@ class Experiment:
     def getMotifLen(self):
         return self.motiflen
 
-def checkSelex(filename):
-    filesplit=filename.split('_')[2]
-    numb=[s for s in filesplit if s.isdigit()]
-    nu=''.join([str(x) for x in numb])
-    return int(nu)
+#funzione per ottenere la lunghezza del motiflen-
+def getMotiflenSelex(filename):
+    fields=filename.split('_')
+    res=''
+    for i in fields[2]:
+        if i.isdigit():
+            res=res+i 
+    if int(res)==30:
+        return 24
+    elif int(res)==40:
+        return 32
+    else:
+        return int(res)
+
 
 class Selex(Experiment):
     def __init__(self,filename):
         self.file=filename
-        self.motiflen=checkSelex(filename)
+        self.motiflen=getMotiflenSelex(filename)
     def openFile(self):
         train_dataset=[]
         with gzip.open(self.file, 'rt') as data:
@@ -293,7 +303,7 @@ class Rnac(Experiment):
         return train_dataset_pad[:frac1],train_dataset_pad[frac1:frac2],train_dataset_pad[frac2:]
         
 
-
+#TRALASCIANDO IL CARICAMENTO DEI DATI, CONSIDERIAMO LA DIVERSITÀ NELLA RETE NEURALE
 ############################################################
 #NEURAL NETWORK BATCH VERSION
 
@@ -757,5 +767,3 @@ with tf.Session(graph=graph2) as sess:
 #    print('wRect ', wRect.eval())
 #    print('wNeu ', wNeu.eval())
 #    print('wNeuBias ', wNeuBias.eval())
-
-
