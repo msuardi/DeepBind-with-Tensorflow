@@ -48,8 +48,10 @@ In questo campo ho modificato il file da loro scritto in modo da essere compatib
 
 ## PROSSIMI STEP
 - Valutare la bontà degli esperimenti
-- Testare in parallelo seguendo ciò che ha fatto Cardillo
-- Capire perchè log_loss non funziona
+- Testare in parallelo seguendo ciò che ha fatto Cardillo / usando multi_gpu /usando aws
+- Installare CUDA9 e testare
+- Sentire Costello per i dati PBM
+- Sentire autori per PBM e RNAc evaluation 
 
 ## NOTE AGGIUNTIVE
 Per evitare di proseguire nelle epoche con loss nan, ho inserito una callback, che fa early-termination in caso la loss finisca a nan. 
