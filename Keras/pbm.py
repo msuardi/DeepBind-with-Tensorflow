@@ -2,6 +2,9 @@ import csv
 import random
 import numpy as np
 from util import seqtopad,reverse
+import gzip
+import math
+
 
 #funzione per caricare il validation set, ovvero il file con 66 TF di un solo tipo 
 def openValidPBM(filename,name,motlen):
@@ -43,7 +46,7 @@ def openPBM(filename,motlen,reverseMode=False):
                         random.shuffle(resseq)
                         diz[last]=resseq
                         resseq=[]
-                        print('passi fatti ',len(diz.keys())) #per avere il controllo, operazioe pesante
+                        print('passi fatti ',len(diz.keys())) #per avere il controllo, operazione pesante
                     last=row[0]
             resseq.append((seqtopad(row[2],motlen),np.float(row[3])))
             if reverseMode:
@@ -64,3 +67,49 @@ def predictSequencesPBM(filename,arrayType,motlen):
     resseq=np.asarray(resseq)
     testseq=np.reshape(resseq,[resseq.shape[0],resseq.shape[1],1])    
     return testseq
+
+#TODO tutte le sottosequenze, fare la media
+def openTestPBM(filename,motlen):
+    resseq=[]
+    with open(filename,'r') as data:
+        reader=csv.reader(data,delimiter='\t')
+        for line in reader:
+            resseq.append((seqtopad(line[0][:40],motlen),np.int32(line[1])))
+    return resseq
+    
+def openPBMrev(sequencefile,targetfile,tfChoose):
+    motiflen=24
+    train_lab=[]
+    clear_lab=[]
+    train_dat=[]
+    test_dat=[]
+
+    with gzip.open(targetfile, 'rt') as data:
+        intest=data.readline().split()
+        col = intest.index(tfChoose) #si sceglie un determinato fattore di trascrizione
+        reader=csv.reader(data, delimiter='\t')
+        for row in reader:
+            if math.isnan(np.float(row[col]))==False: #alcune entry sono nan
+                train_lab.append(np.float(row[col]))
+            else:
+                clear_lab.append(reader.line_num) #salvo l'indice di queste entry per non considerare quelle sequenze
+    with gzip.open(sequencefile, 'rt') as data:
+        next(data)
+        count=0
+        reader=csv.reader(data,delimiter='\t')
+        for row in reader: #divido A e B come training e test set
+            if row[0]=='A' and reader.line_num not in clear_lab:
+                train_dat.append((seqtopad(row[2],motiflen),train_lab[count]))
+                count+=1
+            elif row[0]=='B' and reader.line_num not in clear_lab:
+                test_dat.append((seqtopad(row[2],motiflen),train_lab[count]))
+                count+=1                
+                        
+    return train_dat,test_dat,motiflen
+    
+def scoretobin(score):
+    threshold=np.average(score)+4*np.std(score)
+    res= np.array([1 if elem>threshold else 0 for elem in score])
+    return res
+    
+            
