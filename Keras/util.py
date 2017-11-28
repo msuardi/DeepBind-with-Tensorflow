@@ -180,12 +180,17 @@ def log_loss(label,prediction):
 #funzione per creare le sequenze di training con specificità 0 nel caso di CHIP e SELEX (forniti solo quelli "positivi")
 def dinucshuffle(sequence):
     b=[sequence[i:i+2] for i in range(0, len(sequence), 2)]
-    random.shuffle(b)
-    d=''.join([str(x) for x in b])
+    while(True):
+        c=b.copy()
+        random.shuffle(c)
+        if b!=c:
+            break
+    d=''.join([str(x) for x in c])
     return d
     
 #funzione di calcolo della AUC ripresa da deepfind.py del codice originale
-def calc_auc(z, y, want_curve = False):
+def calc_auc(z, y):
+   want_curve = False
    """Given predictions z and 0/1 targets y, computes AUC with optional ROC curve"""
    z = z.ravel()
    y = y.ravel()
@@ -219,3 +224,5 @@ def calc_auc(z, y, want_curve = False):
        curve = np.hstack([fprate,tprate])
        return auc, curve
    return auc
+
+    

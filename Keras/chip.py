@@ -44,3 +44,5 @@ def openChipTest(sequencefile):
     test_seq=np.asarray([elem[0] for elem in test_dataset])
     test_lab=np.asarray([elem[1] for elem in test_dataset])
     return test_seq,test_lab
+
+

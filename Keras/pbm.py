@@ -90,7 +90,7 @@ def openPBMrev(sequencefile,targetfile,tfChoose):
         reader=csv.reader(data, delimiter='\t')
         for row in reader:
             if math.isnan(np.float(row[col]))==False: #alcune entry sono nan
-                train_lab.append(np.float(row[col]))
+                train_lab.append(np.float(row[col])/np.average(np.array(row).astype(float)))
             else:
                 clear_lab.append(reader.line_num) #salvo l'indice di queste entry per non considerare quelle sequenze
     with gzip.open(sequencefile, 'rt') as data:

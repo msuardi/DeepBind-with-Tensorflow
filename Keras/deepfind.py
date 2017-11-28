@@ -6,13 +6,14 @@ from keras.layers import Dense,Dropout
 from keras.models import Sequential
 from util import log_loss,logsampler,sqrtsampler,calc_auc
 import math
+from multi_gpu import to_multi_gpu
 
 
 #cartella di origine dei file necessari
 data_root='../data/deepfind'
 batchsize=128
 dt=np.float32
-num_epochs=20 #TODO set to 250 later
+num_epochs=250 #TODO set to 250 later
 learning_rate=logsampler(0.005,0.05)
 momentum_rate=sqrtsampler(0.95,0.99)
 
@@ -36,7 +37,7 @@ do_masking = True  # match genes of positive and negative sets
 tfs_to_consider = join(data_root, 'TFs_to_consider.txt')
 
 with open(tfs_to_consider) as fh:
-    considered_files = [line.strip('\r\n') for line in fh][:150]
+    considered_files = [line.strip('\r\n') for line in fh]
 
 #funzione per caricare i dati
 def load_data(save_dir, considered_files=None):
@@ -54,6 +55,7 @@ def load_data(save_dir, considered_files=None):
             continue #si ignorano i TF da non considerare
             
         factor_names.append(file_name[:-4]) # si aggiunge ai factor_names considerati quello corrente (si toglie l'estensione .npz)
+        print('id is  ', join(save_dir,file_name))
         with np.load(join(save_dir, file_name)) as data:
             p = data['pred']
             if cnt == 0:
@@ -164,6 +166,7 @@ def deepFind():
         print("Training a neural network and testing on fold %d" % (test_fold))
         Xtr,Ytr,Xts,Yts,Xvd,Yvd=split_data(fold_id,num_fold)
         model = findNet(dim)
+        model = to_multi_gpu(model,40)
         model.compile(loss=log_loss,
                           optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6))
         print('Ready to Fit OK')
@@ -173,7 +176,7 @@ def deepFind():
         for i in range(num_epochs):
             print('\nFitting in epoch %d' %(i))
             model.fit(Xtr, Ytr,
-                          batch_size=batchsize,epochs=1,
+                          batch_size=batchsize*40,epochs=1,
                           verbose=1)
             prediction = model.predict(Xvd,batchsize,verbose=1)
             print('\n')

@@ -12,7 +12,8 @@ from os import listdir,remove
 from os.path import join
 import pickle
 import csv
-
+import sys
+from training_utils import multi_gpu_model
 import random
 import numpy as np
 from util import *
@@ -32,7 +33,7 @@ import math
 #print("--- %s seconds ---" % (time.time() - start_time))
 
 batch_size = 64 #fissata sempre, su deepfind dovrebbe essere più alta
-epochs = 50 #numero di cicli di training, settabile a piacere -> più è alta più dovrebbe essere accurato il training
+epochs = 10 #numero di cicli di training, settabile a piacere -> più è alta più dovrebbe essere accurato il training
 bases='ACGT'
 basesRNA='ACGU'
 otherArray={'ME':'HK', 'HK':'ME'} #dizionario per ottenere in PBM le sequenze da predire 
@@ -45,24 +46,24 @@ momentum_rate=sqrtsampler(0.95,0.99)
 
 
 #definisco la rete neurale per tutti gli esperimenti
+
 def kerasNet(inpShape,motiflen,exp,hidd,sigmoid):
-    inputs=Input(shape=(inpShape,1)) #layer di Input
-    conv=Conv1D(filters=16,kernel_size=motiflen*4,activation='relu',strides=4)(inputs) #convoluzione 1 dimensionale con strides=4
-    pool=MaxPooling1D(pool_size=int(conv.shape[1]))(conv) #maxpooling
-    if exp=='RNA': #se l'esperimento è RNACompete si deve fare concatenazione alternata (ancora da fare) con average
+    inputs=Input(shape=(inpShape,1))
+    conv=Conv1D(filters=16,kernel_size=motiflen*4,activation='relu',strides=4)(inputs)
+    pool=MaxPooling1D(pool_size=int(conv.shape[1]))(conv)
+    if exp=='RNA':
         avgpool=AveragePooling1D(pool_size=int(conv.shape[1]))(conv)
         pool=AltConcatenate()([avgpool,pool])
-        print(pool)
     flat=Flatten()(pool) 
-    dropout=Dropout(dropoutChoice)(flat) #dropout con la probabilità
-    if hidd==True: #hidden layer si o no? migliora le prestazioni?
-        dropout=Dense(32, activation='relu',use_bias=True)(dropout) #32 hidden layer con relu
+    dropout=Dropout(dropoutChoice)(flat)
+    if hidd==True:
+        dropout=Dense(32, activation='relu',use_bias=True)(dropout)
     if sigmoid==True:
         actfun='sigmoid'
     else:
         actfun='linear'
-    neu=Dense(1, activation=actfun,use_bias=True)(dropout) #passo di rete neurale
-    model=Model(inputs=inputs,outputs=neu) #creo il modello collegando l'input all'output
+    neu=Dense(1, activation=actfun,use_bias=True)(dropout)
+    model=Model(inputs=inputs,outputs=neu)
     print (model.summary())
     return model
     
@@ -78,39 +79,48 @@ def predictPBM(fileTrain,fileValid,predTF,exp='DNA'):
     bestTf=''
     validSeq,validLab,validStdDev,validAvg,arrayType=getValidPBM(fileValid,predTF,motiflen) #apre il validation set 
     print('Validation Done')
-    dictionary=openPBM(fileTrain,motiflen,True) #apre il training set
-    print('I have created the dictionary of %s' %(otherArray[arrayType]))
-    listTf=list(dictionary.keys())
     predSeq=predictSequencesPBM(fileTrain,arrayType,motiflen) #crea le sequenze da predire
     print('I have collected the predict sequences, entering in the predict cycle...')
-    for tfact in listTf: #per ogni fattore di trascrizione in input creo il modello, faccio fitting e valuto la prestazione sul validation
-        trainSeq=np.asarray([elem[0] for elem in dictionary[tfact]]) #estraggo solo le sequenze
-        trainLab=np.asarray([elem[1] for elem in dictionary[tfact]]) #estratto solo le etichette
-        trainLabNorm=(trainLab - np.average(trainLab))/np.std(trainLab) #normalizzo le etichette
-        trainSeq=np.reshape(trainSeq,[trainSeq.shape[0],trainSeq.shape[1],1]) #reshape necessario per il training
-        print('Training data ready, with TF: %s' %(tfact))        
+    datadir='perf/pbm/models'    
+    listfiles=sorted(listdir(datadir))
+    if len(listfiles)==0:    
+        dictionary=openPBM(fileTrain,motiflen,True) #apre il training set
+        print('I have created the dictionary of %s' %(otherArray[arrayType]))
+        listTf=list(dictionary.keys())
+        for tfact in listTf: #per ogni fattore di trascrizione in input creo il modello, faccio fitting e valuto la prestazione sul validation
+            trainSeq=np.asarray([elem[0] for elem in dictionary[tfact]]) #estraggo solo le sequenze
+            trainLab=np.asarray([elem[1] for elem in dictionary[tfact]]) #estratto solo le etichette
+            trainLabNorm=(trainLab - np.average(trainLab))/np.std(trainLab) #normalizzo le etichette
+            trainSeq=np.reshape(trainSeq,[trainSeq.shape[0],trainSeq.shape[1],1]) #reshape necessario per il training
+            print('Training data ready, with TF: %s' %(tfact))        
+            
+            model = kerasNet(int(trainSeq.shape[1]),motiflen,exp,False,False)
+            model = multi_gpu_model(model,4)
+            model.compile(loss='mean_squared_logarithmic_error',
+                          optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6),
+                          )
         
-        model = kerasNet(int(trainSeq.shape[1]),motiflen,exp,True,False)
-        #model = make_parallel(model,4)
-        model.compile(loss='mean_squared_error',
-                      optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6),
-                      metrics=['mae'])
-    
-        model.fit(trainSeq, trainLabNorm,
-                  batch_size=batch_size,
-                  epochs=epochs,
-                  verbose=1,
-                  validation_data=(validSeq, validLab))
+            model.fit(trainSeq, trainLabNorm,
+                      batch_size=batch_size*40,
+                      epochs=epochs,
+                      verbose=1,
+                      validation_data=(validSeq, validLab))
+            name=join(datadir,tfact)
+            model.save(name)
+        listfiles=sorted(listdir(datadir))
+    for file in listfiles:
+        filepath=join(datadir,file)
+        model=load_model(filepath)              
         score = model.evaluate(validSeq, validLab, verbose=1)
-        print('Model is %s, best, score is %f' % (tfact,score[0]))
-        if score[0]<bestScore or bestScore==0:
-            bestScore=score[0]
+        print('\nModel %s has score %f \n' % (file,score))
+        if score<bestScore or bestScore==0:
+            bestScore=score
             bestModel=model
-            bestTf=tfact
-        print(bestTf)
+            bestTf=file
     print('the Best model is ', bestTf)
     prediction = bestModel.predict(predSeq,batch_size,verbose=1)
     prediction = prediction*validStdDev + validAvg
+    
     return prediction
     
 def predictPBMrev(seqTrain,targetTrain,fileTest,predTF,exp='DNA'):
@@ -122,12 +132,12 @@ def predictPBMrev(seqTrain,targetTrain,fileTest,predTF,exp='DNA'):
     trainLab=np.asarray([elem[1] for elem in train])
     validSeq=np.asarray([elem[0] for elem in valid])
     validLab=np.asarray([elem[1] for elem in valid])
-    trainLab=(trainLab-np.average(trainLab))/np.std(trainLab)
-    validLab=(validLab-np.average(validLab))/np.std(validLab) 
+    trainLab=(trainLab-np.average(trainLab)) /np.std(trainLab)
+    validLab=(validLab-np.average(validLab)) /np.std(validLab) 
     trainSeq=np.reshape(trainSeq,[trainSeq.shape[0],trainSeq.shape[1],1])
     validSeq=np.reshape(validSeq,[validSeq.shape[0],validSeq.shape[1],1])
     testSeq=np.reshape(testSeq,[testSeq.shape[0],testSeq.shape[1],1])
-    model = kerasNet(int(trainSeq.shape[1]),motiflen,exp,False,False)
+    model = kerasNet(int(trainSeq.shape[1]),motiflen,exp,True,False)
     model = to_multi_gpu(model,4)    
     model.compile(loss='mean_squared_error',
                       optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6),
@@ -136,10 +146,13 @@ def predictPBMrev(seqTrain,targetTrain,fileTest,predTF,exp='DNA'):
     model.fit(trainSeq, trainLab,
                   batch_size=batch_size*4,
                   epochs=epochs,
-                  verbose=1,
-                  validation_data=(validSeq, validLab))
-    score=model.predict(testSeq,batch_size,verbose=1)
-    fpr, tpr, _ = roc_curve(testLab,score)
+                  verbose=1, validation_split=0.3)
+#                  validation_data=(validSeq, validLab))
+    score=model.predict(validSeq,batch_size,verbose=1)
+    avgpred=np.mean(validLab)
+    stdpred=np.std(validLab)
+    validBin=np.array([0 if elem<avgpred+4*stdpred else 1 for elem in validLab])
+    fpr, tpr, _ = roc_curve(validBin,score)
     roc_auc = auc(fpr, tpr)
     return score,roc_auc
     
@@ -170,17 +183,15 @@ def predictRNA(sequencefile,targetfile,tfChoose,perc,exp,invivo=''):
     model = kerasNet(int(train_seq.shape[1]),motiflen,exp,True,False)
     #train_lab_sta=normalize(train_lab)
     print('Construction ok Keras network OK')
-    #model= make_parallel(model,4)
+    model= multi_gpu_model(model,4)
     model.compile(loss='mean_squared_error',
                       optimizer=optimizers.SGD(lr=0.0001,momentum=0.95,nesterov=True,decay=1e-6),
                       metrics=['mae'])
     print('Ready to Fit OK')
-    callbacks=[TensorBoard(log_dir='./', histogram_freq=0,  
-          write_graph=True, write_images=True)]
     model.fit(train_seq, train_lab_norm,
-                  batch_size=batch_size,#*4,
+                  batch_size=batch_size*4,
                   epochs=epochs,
-                  verbose=1,callbacks=callbacks,
+                  verbose=1,
                   validation_data=(valid_seq, valid_lab_norm))
     print('Fit complete. Now score and prediction')
     if invivo!='': #faccio testing su dati in vivo
@@ -197,7 +208,7 @@ def predictRNA(sequencefile,targetfile,tfChoose,perc,exp,invivo=''):
     prediction = prediction*np.std(test_lab) + np.average(test_lab)
     prediction = np.reshape(prediction,[prediction.shape[0]]) 
     #statsRNA(orig_test_dataset,prediction,test_lab)
-    return score,prediction,model
+    return score,prediction
         
 ##########################################################################################################################
 #ENCODECHIP
@@ -211,21 +222,21 @@ def predictChip(trainfile,testfile):
     train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
     test_seq=np.reshape(test_seq,[test_seq.shape[0],test_seq.shape[1],1])
     
-    model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',False,True)
-    model= to_multi_gpu(model,4)
-    model.compile(loss='binary_crossentropy',
+    model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',True,True)
+    par_model= multi_gpu_model(model,4)
+    par_model.compile(loss='binary_crossentropy',
                       optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6),metrics=['binary_accuracy'])
     print('Ready to Fit OK') 
     callbacks=[EarlyStopping(monitor='loss', min_delta=math.nan, patience=1)]#,TensorBoard(log_dir='./', histogram_freq=0,  
          # write_graph=True, write_images=True)]
-    model.fit(train_seq, train_lab,
+    par_model.fit(train_seq, train_lab,
                   batch_size=batch_size*4,
                   epochs=epochs,#callbacks=callbacks,
-                  verbose=1)
+                  verbose=1,validation_split=0.3)
     print('Fit complete. Now score and prediction')
     
-    score = model.evaluate(test_seq, test_lab, batch_size=batch_size,verbose=1)
-    prediction = model.predict(test_seq,batch_size,verbose=1)
+    score = par_model.evaluate(test_seq, test_lab, batch_size=batch_size,verbose=1)
+    prediction = par_model.predict(test_seq,batch_size,verbose=1)
     prediction = np.reshape(prediction,[prediction.shape[0]]) 
     fpr, tpr, _ = roc_curve(test_lab,prediction)
     roc_auc = auc(fpr, tpr)
@@ -238,24 +249,22 @@ def predictChip(trainfile,testfile):
 def predictSelex(trainfile,testfile):
     motiflen=getMotiflenSelex(trainfile) #estraggo dal nome del file la lunghezza delle sequenze
     train_seq, train_lab=openSelex(trainfile,motiflen) #estraggo i dati di training
-    #train_lab2=keras.utils.to_categorical(train_lab,num_classes=2)
     test_seq,test_lab=openSelexTest(testfile,motiflen) #estraggo i dati di testing
-    #test_lab2=keras.utils.to_categorical(test_lab,num_classes=2)
     train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
     test_seq=np.reshape(test_seq,[test_seq.shape[0],test_seq.shape[1],1])
-    model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',False,True)
-    model.compile(loss='binary_crossentropy',
-                      optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6,metrics=['binary_accuracy']))
+    model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',True,True)
+    par_model = multi_gpu_model(model,4)
+    par_model.compile(loss='binary_crossentropy',
+                      optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6),metrics=['binary_accuracy'])
     print('Ready to Fit OK')
-    model = to_multi_gpu(model,4)
     #callbacks=[EarlyStopping(monitor='loss', min_delta=math.nan, patience=1)]
-    model.fit(train_seq, train_lab,
+    par_model.fit(train_seq, train_lab,
                   batch_size=batch_size*4,
                   epochs=epochs,# callbacks=callbacks,
-                  verbose=1)
+                  verbose=1, validation_split=0.3)
     print('Fit complete. Now score and prediction')
-    score = model.evaluate(test_seq, test_lab, batch_size=batch_size,verbose=1)
-    prediction = model.predict(test_seq,batch_size,verbose=1)
+    score = par_model.evaluate(test_seq, test_lab, batch_size=batch_size,verbose=1)
+    prediction = par_model.predict(test_seq,batch_size,verbose=1)
     prediction = np.reshape(prediction,[prediction.shape[0]])
     fpr, tpr, _ = roc_curve(test_lab,prediction)
     roc_auc = auc(fpr, tpr)
@@ -274,110 +283,132 @@ def load_obj(folder):
     with open('perf/' + folder + '/bestauc.pkl', 'rb') as f:
         return pickle.load(f)
 
-def create_dict(older):    
-    diziotot=dict()
-    with open(older,'r') as data:
-        reader=csv.reader(data, delimiter=',')
-        next(reader)
-        next(reader)
-        for r in reader:
-            diziotot[r[1]]=[r[2],r[3],r[4]]
-#def create_dict(folder,pad):
-#    dictioauc=dict()
-#    lista=sorted(listdir(folder))
-#    for i in range(0,len(lista),2):
-#        if(lista[i][:-pad] in diziotot.keys()):
-#            dictioauc[lista[i][:-pad]]=diziotot[lista[i][:-pad]]+[0.]    
-    return diziotot
+#def create_dict(older):    
+#    diziotot=dict()
+#    with open(older,'r') as data:
+#        reader=csv.reader(data, delimiter=',')
+#        next(reader)
+#        next(reader)
+#        for r in reader:
+#            diziotot[r[1]]=[r[2],r[3],r[4]]
+
+def create_dict(folder,pad):
+    dictioauc=dict()
+    lista=sorted(listdir(folder))
+    for i in range(0,len(lista),2):
+	    dictioauc[lista[i][:-pad]]=0.    
+    return dictioauc
 
 if __name__ == '__main__':
-            
-            
-    
     start_time = time.time()
-#    pred = predictPBM('../DREAM5.txt','../DREAM5test.txt','TF_42')
-#    print("--- %s seconds ---" % (time.time() - start_time))
-#    print(pred)
-#    
-#    score,auc_score=predictPBMrev('../data/dream5/pbm/sequences.tsv.gz','../data/dream5/pbm/targets.tsv.gz','../data/dream5/chipseq/TF_23_CHIP_51_full_genomic.seq','TF_23')    
-#    print('\nscore is ', score)
-#    print('\nauc is ',auc_score)
+
+    if(sys.argv[1]=='PBM'):
+#        pred = predictPBM('../data/DREAM5.txt','../data/DREAM5test.txt','TF_1')
+#        print("--- %s seconds ---" % (time.time() - start_time))
+#        print(pred)
+#        avgpred=np.mean(pred)
+#        stdpred=np.std(pred)
+#        predBin=np.array([0 if elem<avgpred+4*stdpred else 1 for elem in pred])
+#        test_lab=[]
+#        with open('../data/Answers.txt','r') as data:
+#            next(data)
+#            reader=csv.reader(data, delimiter='\t')
+#            for r in reader:
+#                if r[0]!='TF_1':
+#                    break
+#                test_lab.append(r[3])
+#        test_lab=np.array(test_lab)
+#        fpr, tpr, _ = roc_curve(test_lab,predBin)
+#        roc_auc = auc(fpr, tpr)
+#        print(roc_auc)
 #
-#    scoreRNA,predRNA=predictRNA('../data/rnac/sequences.tsv','../data/rnac/targets.tsv','RNCMPT00014',0.8,'RNA')
-#    print('score is ', scoreRNA)
-#    print('pred is ',predRNA)
-    ##################################
-    #CHIP
-    asktosave=True
-#    datadir='../data/encode'    
-#    listfiles=sorted(listdir(datadir))
-#    for l in range(0,len(listfiles)//2):    
-#        training,test=getNames(listfiles,l)
-#        exper_name=training[15:-10]
-#        print('I am analyzing %s' %(exper_name)) 
-#        for i in range(1): 
-#            score,pred,auc_score,model=predictChip(training,test)
-#            print('\nscore is ',score)
-#            #print('\npred is ',pred)
-#            print('\nauc is ',auc_score)
-#            try:
-#                bestaucs=load_obj('chip')
-#            except:
-#                bestaucs=create_dict('../data/encode',10,'encodeaucs.csv')
-#            exper_auc=float(bestaucs[exper_name][2])
-#            if(exper_auc<auc_score):
-#                if exper_auc!=0:
-#                    remove('perf/chip/'+ exper_name + '_model')
-#                filename=exper_name + '_model'
-#                filepath=join('perf/chip',filename)
-#                model.save(filepath)
-#                bestaucs[exper_name][2]=auc_score
-#                save_obj(bestaucs,'chip')
-#            if(asktosave):
-#                with open('encodecomplete.csv', 'w') as csv_file:
-#                    writer = csv.writer(csv_file)
-#                    for key, value in sorted(bestaucs.items()):
-#                        writer.writerow([key, float(value[0]),float(value[1]),float(value[2])])
-#                    
-#        print('best aucs found is ',bestaucs[exper_name])
+#        with open('provapbm.csv','w') as csv_file:
+#            writer=csv.writer(csv_file)
+#            for i in range(len(pred)):
+#                writer.writerow([float(pred[i][0])])
+#    
+        score,auc_score=predictPBMrev('../data/dream5/pbm/sequences.tsv.gz','../data/dream5/pbm/targets.tsv.gz','../data/dream5/chipseq/TF_23_CHIP_51_full_genomic.seq','TF_23')    
+        print('\nscore is ', score)
+        print('\nauc is ',auc_score)
+#
+    elif(sys.argv[1]=='RNA'):
+        scoreRNA,predRNA=predictRNA('../data/rnac/sequences.tsv','../data/rnac/targets.tsv','RNCMPT00014',0.8,'RNA')
+        print('score is ', scoreRNA)
+        print('pred is ',predRNA)
+#    ##################################
+#   CHIP
+    
+    elif(sys.argv[1]=='CHIP'):
+        asktosave=False
+        datadir='../data/encode'    
+        listfiles=sorted(listdir(datadir))
+        for l in range(int(sys.argv[2]),len(listfiles)//2):    
+            training,test=getNames(listfiles,l)
+            exper_name=training[15:-10]
+            print('I am analyzing %s' %(exper_name)) 
+            for i in range(5): 
+                score,pred,auc_score,model=predictChip(training,test)
+                print('\nscore is ',score)
+                #print('\npred is ',pred)
+                print('\nauc is ',auc_score)
+                try:
+                    bestaucs=load_obj('chip')
+                except:
+                    bestaucs=create_dict('../data/encode',10)
+                exper_auc=float(bestaucs[exper_name])
+                if(exper_auc<auc_score):
+                    if exper_auc!=0:
+                        remove('perf/chip/'+ exper_name + '_model')
+                    filename=exper_name + '_model'
+                    filepath=join('perf/chip',filename)
+                    model.save(filepath)
+                    bestaucs[exper_name]=auc_score
+                    save_obj(bestaucs,'chip')
+                if(asktosave):
+                    with open('encodecomplete.csv', 'w') as csv_file:
+                        writer = csv.writer(csv_file)
+                        for key, value in sorted(bestaucs.items()):
+                            writer.writerow([key, float(value)])
+                        
+            print('best aucs found is ',bestaucs[exper_name])
     #########################################################
         
     ###################################
-    #SELEX
-    datadir='../data/selex/jolma'    
-    listfiles=sorted(listdir(datadir))
-    for j in range(0,len(listfiles)//2):
-        training,test=getNames(listfiles,j)
-        exper_name=training[20:-9]
-        print('I am analyzing %s' %(exper_name)) 
-        for i in range(3): 
-            score,pred,auc_score,model=predictChip(training,test)
-            print('\nscore is ',score)
-            #print('\npred is ',pred)
-            print('\nauc is ',auc_score)
-            try:
-                bestaucs=load_obj('selex')
-            except:
-                bestaucs=create_dict('selexauc.csv')
-            exper_auc=float(bestaucs[exper_name][2])
-            if(exper_auc<auc_score):
-                if exper_auc!=0:
-                    remove('perf/selex/'+ exper_name + '_model')
-                filename=exper_name + '_model'
-                filepath=join('perf/selex',filename)
-                model.save(filepath)
-                bestaucs[exper_name][2]=auc_score
-                save_obj(bestaucs,'selex')
-            if(asktosave):
-                with open('selexcomplete.csv', 'w') as csv_file:
-                    writer = csv.writer(csv_file)
-                    for key, value in sorted(bestaucs.items()):
-                        writer.writerow([key, float(value[0]),float(value[1]),float(value[2])])
-        print('best aucs found is ',bestaucs[exper_name])
-#    ########################################################        
-#    con model.get_weights posso ottenere i pesi del modello
-#    score,pred,auc,model=predictSelex('../data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_A.seq.gz','../data/selex/jolma/Alx1_DBD_TAAAGC20NCG_3_Z_B.seq.gz')
-#    print('\nscore is ',score)
-#    print('\npred is ',pred)
-#    print('\nauc is ', auc)
+#    SELEX
+    elif(sys.argv[1]=='SELEX'):
+        asktosave=False
+        datadir='../data/selex/jolma'    
+        listfiles=sorted(listdir(datadir))
+        for j in range(int(sys.argv[2]),len(listfiles)//2):
+            training,test=getNames(listfiles,j)
+            exper_name=training[20:-9]
+            print('I am analyzing %s' %(exper_name)) 
+            for i in range(5): 
+                score,pred,auc_score,model=predictSelex(training,test)
+                print('\nscore is ',score)
+                #print('\npred is ',pred)
+                print('\nauc is ',auc_score)
+                try:
+                    bestaucs=load_obj('selex')
+                except:
+                    bestaucs=create_dict('../data/selex/jolma',9)
+                exper_auc=float(bestaucs[exper_name])
+                if(exper_auc<auc_score):
+                    if exper_auc!=0:
+                        remove('perf/selex/'+ exper_name + '_model')
+                    filename=exper_name + '_model'
+                    filepath=join('perf/selex',filename)
+                    model.save(filepath)
+                    bestaucs[exper_name]=auc_score
+                    save_obj(bestaucs,'selex')
+                if(asktosave):
+                    with open('selexcomplete.csv', 'w') as csv_file:
+                        writer = csv.writer(csv_file)
+                        for key, value in sorted(bestaucs.items()):
+                            writer.writerow([key, float(value)])
+            print('best aucs found is ',bestaucs[exper_name])
+        ########################################################        
+    else:
+        print('UNKNOWN OPTION')
+
     print("--- %s seconds ---" % (time.time() - start_time))    
