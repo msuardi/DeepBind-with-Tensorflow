@@ -3,14 +3,13 @@ import math
 import numpy as np
 import random
 import itertools
-from util import seqtopad,padsequence,calc_auc
+from util import seqtopad,padsequence
 from scipy.stats import pearsonr,spearmanr
 from sklearn import metrics
 
 basesRNA='ACGU'
 
-#funzione per creare test e training
-def openRNA(sequencefile,targetfile,tfChoose):
+def openRNA(sequencefile,targetfile,tfChoose): #create training and test set for RNA
     motiflen=16
     train_lab=[]
     clear_lab=[]
@@ -23,18 +22,18 @@ def openRNA(sequencefile,targetfile,tfChoose):
 
     with open(targetfile,'r') as data:
         intest=data.readline().split()
-        col = intest.index(tfChoose) #si sceglie un determinato fattore di trascrizione
+        col = intest.index(tfChoose) #choose a specific TF
         reader=csv.reader(data, delimiter='\t')
         for row in reader:
-            if math.isnan(np.float(row[col]))==False: #alcune entry sono nan
+            if math.isnan(np.float(row[col]))==False: #some entry NaN
                 train_lab.append(np.float(row[col]))
             else:
-                clear_lab.append(reader.line_num) #salvo l'indice di queste entry per non considerare quelle sequenze
+                clear_lab.append(reader.line_num) #save not-NaN entries
     with open(sequencefile,'r') as data2:
         next(data2)
         count=0
         reader=csv.reader(data2,delimiter='\t')
-        for row in reader: #divido A e B come training e test set
+        for row in reader: #A is training, B is test
             if row[0]=='A' and reader.line_num not in clear_lab:
                 train_dat.append((row[2],train_lab[count]))
                 count+=1
@@ -44,16 +43,15 @@ def openRNA(sequencefile,targetfile,tfChoose):
                 test_dat.append((row[2],train_lab[count]))
                 count+=1                
                 if len(row[2])>maxlenB:
-                    maxlenB=len(row[2]) #salvo la massima lunghezza per fare il padding
+                    maxlenB=len(row[2]) #save max length for padding
             
-    #ciclo per fare padding in training set   
-    for i in range(len(train_dat)):
+    for i in range(len(train_dat)): #padding in training set
         if len(train_dat[i][0])!=maxlenA:
             train_data.append((seqtopad(padsequence(train_dat[i][0],maxlenA),motiflen),train_dat[i][1]))
         else:
             train_data.append((seqtopad(train_dat[i][0],motiflen),train_dat[i][1]))
-    #ciclo per fare padding in test set
-    for j in range(len(test_dat)):
+
+    for j in range(len(test_dat)): #padding in test set
         if len(test_dat[j][0])!=maxlenB:
             test_data.append((seqtopad(padsequence(test_dat[j][0],maxlenB),motiflen),test_dat[j][1]))
         else:
@@ -61,15 +59,12 @@ def openRNA(sequencefile,targetfile,tfChoose):
             
     return train_data,test_data,test_dat,motiflen
             
-#funzione per creare il validation set come frazione del training set
-def getValidRNA(traindataset,perc):
+def getValidRNA(traindataset,perc): #create validation set
     random.shuffle(traindataset)
     frac=int(len(traindataset)*perc)
     return traindataset[:frac],traindataset[frac:]
 
-#funzione per ottenere lo zscore: per ognuna delle sequenze di 7-meri salvo i valori predetti e originali delle specificità delle sequenze contenenti
-#come sottosequenza quel 7-mero; faccio poi la mediana di ciascun array
-def Zscore(sequences,valuesOrig,valuesPred,listSeven):
+def Zscore(sequences,valuesOrig,valuesPred,listSeven): #obtain z-score, supplementary paper p.15
     orig=[]
     pred=[]
     for l in listSeven:
@@ -88,23 +83,16 @@ def Zscore(sequences,valuesOrig,valuesPred,listSeven):
     zscPred=(zscPred-np.average(zscPred))/np.std(zscPred)
     return zscOrig,zscPred
 
-#funzione per ritornare array per auc
-def aucscore(sequences,values,lista):
+def aucscore(sequences,values,lista): #aucscore list
     aucl=np.array([l in seq for l in lista for seq in sequences]) 
-    #ogni sequenza è un array interno. Ogni elemento dell'array interno
-    #ogni elemento dell'array interno è 0 o 1 in base al fatto che il 7-mero i sia sottosequenza della sequenza
-    #auclc=np.array([aucl[i:i+len(sequences)] for i in range(0,len(sequences),len(sequences))])
     auclist=[calc_auc(values,aucli) for aucli in aucl]
     return auclist,aucl
 
-#funzione per generare la lista di tutti i 7-meri di RNA, serve per misure di accuratezza di RNACompete
-def gen7list():
+def gen7list(): #generate all 7-mers
     lista=[''.join(elem)for elem in itertools.product(basesRNA,repeat=7)]
     return lista
 
-#TODO check if all is ok with parallel implementation
-#rappresenta le statistiche da fare con RNAcompete, seguendo il paper
-def statsRNA(orig_dataset,predictionarray,testlab):
+def statsRNA(orig_dataset,predictionarray,testlab): #generate stats, supplementary paper p.15
     listSev=gen7list()
     sequences=[elem[0] for elem in orig_dataset]
     values=[elem[1] for elem in orig_dataset]
@@ -112,32 +100,26 @@ def statsRNA(orig_dataset,predictionarray,testlab):
     aucSc,yesornot=aucscore(sequences,values,listSev)
     coeffNorm=(pearsonr(predictionarray,testlab),spearmanr(predictionarray,testlab))
     coeffZ=(pearsonr(zscoreorig,zscorepred),spearmanr(zscoreorig,zscorepred))
-    #E-SCORE (page 15 paper supp)
     valYes=np.asarray([[values[i] for i in range(len(values))] for sev in listSev if sev in sequences[i]])
     indYesSort=np.asarray([np.argsort(el) for el in valYes])
     yesornotIN=np.asarray([yesornot[i][indYesSort[i]] for i in range(len(indYesSort))])
     yesornotINspl=np.asarray([elem[(len(elem)/2):] for elem in yesornotIN])
     valYes=np.asarray([valYes[i][indYesSort[i]] for i in range(len(indYesSort))])
-    valYesspl=np.asarray([elem[(len(elem)/2):] for elem in valYes])
-    
+    valYesspl=np.asarray([elem[(len(elem)/2):] for elem in valYes]) 
     valNo=np.asarray([values[i] for i in range(len(values)) for sev in listSev if sev not in sequences[i]])    
     indNoSort=np.asarray([np.argsort(el) for el in valNo])
     yesornotNOT=np.asarray([yesornot[i][indNoSort[i]] for i in range(len(indNoSort))])
     yesornotNOTspl=np.asarray([elem[(len(elem)/2):] for elem in yesornotNOT])
     valNo=np.asarray([valNo[i][indNoSort[i]] for i in range(len(indNoSort))])
     valNospl=np.asarray([elem[(len(elem)/2):] for elem in valNo])
-
     intensities=np.asarray([valYesspl[i].extend(valNospl[i]) for i in range(len(valYesspl))])
-    labels=np.asarray(yesornotINspl[i].extend(yesornotNOTspl[i]) for i in range(len(yesornotINspl)))
-    
+    labels=np.asarray(yesornotINspl[i].extend(yesornotNOTspl[i]) for i in range(len(yesornotINspl))) 
     aucscore=np.asarray([calc_auc(intensities[i],labels[i]) for i in range(len(intensities))])
     escore=aucscore-0.5
 
     return coeffNorm,coeffZ,aucscore,escore
     
-#TODO testing in parallel
-#funzione per effettuare il testing su dati in vivo, presenti in una sottocartella di RNACompete
-def testRNAVivo(sequencefile,motiflen,maxlenseq):
+def testRNAVivo(sequencefile,motiflen,maxlenseq): #test in vivo sequences
     with open(sequencefile,'r') as data:
         lines=data.readlines()
         test=[]
@@ -149,4 +131,3 @@ def testRNAVivo(sequencefile,motiflen,maxlenseq):
                 temp.append(seqtopad(elem,motiflen))
         test.append(temp)
     return np.asarray(test)
-

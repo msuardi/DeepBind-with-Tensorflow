@@ -9,8 +9,7 @@ from keras.layers import Concatenate
 dictpad={'A':[1.,0.,0.,0.],'C':[0.,1.,0.,0.],'G':[0.,0.,1.,0.],'T':[0.,0.,0.,1.],'U':[0.,0.,0.,1.],'N':[0.25,0.25,0.25,0.25]}
 dictReverse={'A':'T','C':'G','G':'C','T':'A','N':'N'} #dictionary to implement reverse-complement mode
 
-#metodo per effettuare la concatenazione alternata, modificato il concatenate originale
-def altconcatenate(tensors,axis=-1):
+def altconcatenate(tensors,axis=-1): #altconcatenate function
     """Concatenates a list of tensors alongside the specified axis.
     # Arguments
         tensors: list of tensors to concatenate.
@@ -33,8 +32,7 @@ def altconcatenate(tensors,axis=-1):
         result=tf.expand_dims(result,2)
         return result
 
-#definisco la classe AltConcatenate ereditando dalla originale Concatenate
-class AltConcatenate(Concatenate):
+class AltConcatenate(Concatenate): #create altconcatenate layer (keras custom layer)
     """Layer that concatenates a list of inputs.
     It takes as input a list of tensors,
     all of the same shape expect for the concatenation axis,
@@ -43,7 +41,6 @@ class AltConcatenate(Concatenate):
         axis: Axis along which to concatenate.
         **kwargs: standard layer keyword arguments.
     """
-
     def __init__(self, axis=-1, **kwargs):
         super(Concatenate, self).__init__(**kwargs)
         self.axis = axis
@@ -122,11 +119,7 @@ class AltConcatenate(Concatenate):
         base_config = super(Concatenate, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
-
-
-
-#funzione per trasformare le sequenze di input in array, presente nel paper supplementare pag.3
-def seqtopad(sequence,motlen):
+def seqtopad(sequence,motlen): #transform sequence in array, supplementary paper p.3
     pad=[]
     for j in range(motlen-1):
         pad.extend(dictpad['N'])
@@ -136,15 +129,14 @@ def seqtopad(sequence,motlen):
     res.extend(pad)
     return np.asarray(res)
 
-#funzione per trovare filamento opposto della sequenza
-def reverse(sequence):
+def reverse(sequence): #obtain reverse sequence in DNA experiments
     revseq=''
     for i in sequence:
         revseq+=dictReverse[i]
     return revseq    
 
-#funzioni per inizializzare momentum_rate e learning_rate, paper suppl. pag. 12
-def logsampler(a,b,tensor=0):
+#initalize momentum_rate e learning_rate with this sampler, supplementary paper p.12
+def logsampler(a,b,tensor=0): 
     if(tensor==1):
         x=tf.Variable(tf.random_uniform([1],minval=0,maxval=1))
     else:
@@ -160,25 +152,10 @@ def sqrtsampler(a,b,tensor=0):
     y=(b-a)*math.sqrt(x)+a
     return y
 
-#funzione per effettuare il padding delle sequenze nel caso in cui gli input hanno sequenze di lunghezza diversa
-#necessario per RNAcompete, anche perché i tensori accettano input della stessa forma
-def padsequence(sequence,maxlength):
+def padsequence(sequence,maxlength): #pad sequences with different length
     return sequence + 'N'*(maxlength-len(sequence))
     
-#funzione di perdita per CHIP-seq e SELEX, non è di default in Kears
-#TODO va in loop 
-def log_sigma_loss(label,prediction):
-    def sigma(x):
-        return 1/(1+math.e**(-x))
-#    sigm=K.sigmoid(prediction)
-#    return K.mean(-label*K.log(sigm) - (1-label)*K.log(1-sigm))
-    return K.mean(-label*K.log(sigma(prediction)) - (1-label)*K.log(1-sigma(prediction)))
-
-def log_loss(label,prediction):
-    return K.mean(-label*K.log(prediction) - (1-label)*K.log(1-prediction))
-
-#funzione per creare le sequenze di training con specificità 0 nel caso di CHIP e SELEX (forniti solo quelli "positivi")
-def dinucshuffle(sequence):
+def dinucshuffle(sequence): #implement dinucshuffle, supplementary paper p.13
     b=[sequence[i:i+2] for i in range(0, len(sequence), 2)]
     while(True):
         c=b.copy()
@@ -187,42 +164,4 @@ def dinucshuffle(sequence):
             break
     d=''.join([str(x) for x in c])
     return d
-    
-#funzione di calcolo della AUC ripresa da deepfind.py del codice originale
-def calc_auc(z, y):
-   want_curve = False
-   """Given predictions z and 0/1 targets y, computes AUC with optional ROC curve"""
-   z = z.ravel()
-   y = y.ravel()
-   assert len(z) == len(y)
-
-# Remove any pair with NaN in y    
-   m = ~np.isnan(y)
-   y = y[m]
-   z = z[m]
-   assert np.all(np.logical_or(y==0, y==1)), "Cannot calculate AUC for non-binary targets"
-
-   order = np.argsort(z,axis=0)[::-1].ravel()   # Sort by decreasing order of prediction strength
-   z = z[order]
-   y = y[order]
-   npos = np.count_nonzero(y)      # Total number of positives.
-   nneg = len(y)-npos              # Total number of negatives.
-   if nneg == 0 or npos == 0:
-       return (np.nan,None) if want_curve else 1
-
-   n = len(y)
-   fprate = np.zeros((n+1,1))
-   tprate = np.zeros((n+1,1))
-   ntpos,nfpos = 0.,0.
-   for i,yi in enumerate(y):
-       if yi: ntpos += 1
-       else:  nfpos += 1
-       tprate[i+1] = ntpos/npos
-       fprate[i+1] = nfpos/nneg
-   auc = float(np.trapz(tprate,fprate,axis=0))
-   if want_curve:
-       curve = np.hstack([fprate,tprate])
-       return auc, curve
-   return auc
-
     

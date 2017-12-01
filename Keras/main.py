@@ -33,7 +33,7 @@ import math
 #print("--- %s seconds ---" % (time.time() - start_time))
 
 batch_size = 64 #fissata sempre, su deepfind dovrebbe essere più alta
-epochs = 10 #numero di cicli di training, settabile a piacere -> più è alta più dovrebbe essere accurato il training
+epochs = 100 #numero di cicli di training, settabile a piacere -> più è alta più dovrebbe essere accurato il training
 bases='ACGT'
 basesRNA='ACGU'
 otherArray={'ME':'HK', 'HK':'ME'} #dizionario per ottenere in PBM le sequenze da predire 
@@ -41,7 +41,7 @@ dropoutList=[0.5,0.75,1.0] #lista dei possibili valori di dropout
 dropoutChoice=random.choice(dropoutList) #estrazione di uno dei valori a caso, dovrebbe essere estratto tramite Bernoulli
 
 #determino learning_rate e momentum_rate estraendo a caso seguendo i due sampler definiti in util
-learning_rate=logsampler(0.005,0.05)
+learning_rate=0.05
 momentum_rate=sqrtsampler(0.95,0.99)
 
 
@@ -214,7 +214,7 @@ def predictRNA(sequencefile,targetfile,tfChoose,perc,exp,invivo=''):
 #ENCODECHIP
 
 #predizioni di dati chipseq  
-def predictChip(trainfile,testfile): 
+def predictChip(trainfile,testfile,boolHidd): 
     train_seq, train_lab,motiflen=openChip(trainfile) #estraggo dati di training
     #train_lab2=keras.utils.to_categorical(train_lab,num_classes=2)
     test_seq,test_lab=openChipTest(testfile) #estraggo dati di test
@@ -222,15 +222,15 @@ def predictChip(trainfile,testfile):
     train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
     test_seq=np.reshape(test_seq,[test_seq.shape[0],test_seq.shape[1],1])
     
-    model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',True,True)
-    par_model= multi_gpu_model(model,4)
+    model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',boolHidd,True)
+    par_model= multi_gpu_model(model,8)
     par_model.compile(loss='binary_crossentropy',
                       optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6),metrics=['binary_accuracy'])
     print('Ready to Fit OK') 
     callbacks=[EarlyStopping(monitor='loss', min_delta=math.nan, patience=1)]#,TensorBoard(log_dir='./', histogram_freq=0,  
          # write_graph=True, write_images=True)]
     par_model.fit(train_seq, train_lab,
-                  batch_size=batch_size*4,
+                  batch_size=batch_size*8,
                   epochs=epochs,#callbacks=callbacks,
                   verbose=1,validation_split=0.3)
     print('Fit complete. Now score and prediction')
@@ -246,20 +246,20 @@ def predictChip(trainfile,testfile):
 ############################################################
 #SELEX
 
-def predictSelex(trainfile,testfile):
+def predictSelex(trainfile,testfile,boolHidd):
     motiflen=getMotiflenSelex(trainfile) #estraggo dal nome del file la lunghezza delle sequenze
     train_seq, train_lab=openSelex(trainfile,motiflen) #estraggo i dati di training
     test_seq,test_lab=openSelexTest(testfile,motiflen) #estraggo i dati di testing
     train_seq=np.reshape(train_seq,[train_seq.shape[0],train_seq.shape[1],1])
     test_seq=np.reshape(test_seq,[test_seq.shape[0],test_seq.shape[1],1])
-    model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',True,True)
+    model = kerasNet(int(train_seq.shape[1]),motiflen,'DNA',boolHidd,True)
     par_model = multi_gpu_model(model,4)
     par_model.compile(loss='binary_crossentropy',
                       optimizer=optimizers.SGD(lr=learning_rate,momentum=momentum_rate,nesterov=True,decay=1e-6),metrics=['binary_accuracy'])
     print('Ready to Fit OK')
     #callbacks=[EarlyStopping(monitor='loss', min_delta=math.nan, patience=1)]
     par_model.fit(train_seq, train_lab,
-                  batch_size=batch_size*4,
+                  batch_size=batch_size*32,
                   epochs=epochs,# callbacks=callbacks,
                   verbose=1, validation_split=0.3)
     print('Fit complete. Now score and prediction')
@@ -345,9 +345,10 @@ if __name__ == '__main__':
         for l in range(int(sys.argv[2]),len(listfiles)//2):    
             training,test=getNames(listfiles,l)
             exper_name=training[15:-10]
-            print('I am analyzing %s' %(exper_name)) 
-            for i in range(5): 
-                score,pred,auc_score,model=predictChip(training,test)
+            for i in range(10):
+                cond=i<5
+                print('I am analyzing %s (%d) in cycle %d' %(exper_name,l,i))
+                score,pred,auc_score,model=predictChip(training,test,cond)
                 print('\nscore is ',score)
                 #print('\npred is ',pred)
                 print('\nauc is ',auc_score)
@@ -382,9 +383,10 @@ if __name__ == '__main__':
         for j in range(int(sys.argv[2]),len(listfiles)//2):
             training,test=getNames(listfiles,j)
             exper_name=training[20:-9]
-            print('I am analyzing %s' %(exper_name)) 
-            for i in range(5): 
-                score,pred,auc_score,model=predictSelex(training,test)
+            for i in range(4):
+                cond=i<2
+                print('I am analyzing %s (%d) in cycle %d' %(exper_name,j,i))
+                score,pred,auc_score,model=predictSelex(training,test,cond)
                 print('\nscore is ',score)
                 #print('\npred is ',pred)
                 print('\nauc is ',auc_score)

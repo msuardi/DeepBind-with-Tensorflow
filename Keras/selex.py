@@ -4,8 +4,7 @@ import csv
 import numpy as np
 from util import seqtopad,dinucshuffle
 
-#funzione per ottenere dal nome del file la lunghezza della sequenza e ritornare la corrispondente motiflen
-def getMotiflenSelex(filename):
+def getMotiflenSelex(filename): #get name of TF and return motiflen (supplementary paper p.20)
     fields=filename.split('_')
     res=''
     for i in fields[2]:
@@ -18,8 +17,7 @@ def getMotiflenSelex(filename):
     else:
         return int(res)
 
-#funzione per aprire il file di training di Selex
-def openSelex(trainfile,motiflen):
+def openSelex(trainfile,motiflen): #open Selex training set
     train_dataset=[]
     with gzip.open(trainfile, 'rt') as data:
         next(data)
@@ -27,13 +25,12 @@ def openSelex(trainfile,motiflen):
         for row in reader:
                 train_dataset.append([seqtopad(row[2],motiflen),1])
                 train_dataset.append([seqtopad(dinucshuffle(row[2]),motiflen),0])
-    random.shuffle(train_dataset) #migliora le performance?
+    random.shuffle(train_dataset)
     train_seq=np.asarray([elem[0] for elem in train_dataset])
     train_lab=np.asarray([elem[1] for elem in train_dataset])
     return train_seq,train_lab
     
-#funzione per aprire il file di test di Selex
-def openSelexTest(sequencefile,motiflen):
+def openSelexTest(sequencefile,motiflen): #open Selex Test
     test_dataset=[]
     with gzip.open(sequencefile, 'rt') as data:
         next(data)

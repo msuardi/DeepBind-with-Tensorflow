@@ -8,12 +8,11 @@ from util import log_loss,logsampler,sqrtsampler,calc_auc
 import math
 from multi_gpu import to_multi_gpu
 
-
-#cartella di origine dei file necessari
+#SIMPLY COPY DEEPFIND ORIGINAL SCRIPT AND REPLACE NEURAL NETWORK USING KERAS
 data_root='../data/deepfind'
 batchsize=128
 dt=np.float32
-num_epochs=250 #TODO set to 250 later
+num_epochs=250
 learning_rate=logsampler(0.005,0.05)
 momentum_rate=sqrtsampler(0.95,0.99)
 
@@ -26,81 +25,70 @@ mask_file      = join(data_root, 'matching_mask.npz')
 pos_feat_file  = join(data_root, 'simulated_feats.npz') 
 neg_feat_file  = join(data_root, 'derived_feats.npz')
 
-#operazioni opzionali
 add_cons   = True  # add conservation information
 add_feats  = True  # add dist to TSS and is_transversion features
 add_tfs    = True  # add predictions from TFs for wildtype and mutant
 do_masking = True  # match genes of positive and negative sets
 
-
-#il file TFs_to_consider contiene l'insieme dei TF da considerare (per le prove utilizzato set minore, memory error)
 tfs_to_consider = join(data_root, 'TFs_to_consider.txt')
 
 with open(tfs_to_consider) as fh:
     considered_files = [line.strip('\r\n') for line in fh]
 
-#funzione per caricare i dati
 def load_data(save_dir, considered_files=None):
     files = listdir(save_dir)
     factor_names = []
     
-    if considered_files is None: #se il file TFs_to_consider non esiste,utilizzo tutti i file della cartella
-        dim = 2*(len(files)) #per ogni TF si considera la wild type prediction e la mutant-wildtype
+    if considered_files is None: 
+        dim = 2*(len(files))
     else:
         dim = 2*(len(considered_files))
 
     cnt = 0
     for file_name in sorted(files):
         if considered_files is not None and file_name[:-4] not in considered_files:
-            continue #si ignorano i TF da non considerare
+            continue 
             
-        factor_names.append(file_name[:-4]) # si aggiunge ai factor_names considerati quello corrente (si toglie l'estensione .npz)
+        factor_names.append(file_name[:-4])
         print('id is  ', join(save_dir,file_name))
         with np.load(join(save_dir, file_name)) as data:
             p = data['pred']
             if cnt == 0:
-                # si inizializza la matrice delle feature
                 X = np.empty((int(p.shape[0]/2),dim)) 
             X[:,2*cnt]   = p[::2]               # wild type predictions
             X[:,2*cnt+1] = p[1::2] - p[::2]     # mutant - wildtype predictions
         cnt += 1    
     return X, factor_names
 
-pX, pfactors = load_data(pos_dir, considered_files) #questi sono i dati corrispondenti ai TF simulati, cioè le vere e proprie varianti dannose
-nX, nfactors = load_data(neg_dir, considered_files) #questi sono i dati derivati, ovvero le normali alterazioni degli alleli
+pX, pfactors = load_data(pos_dir, considered_files) 
+nX, nfactors = load_data(neg_dir, considered_files)
 
 print('Adding prediction for %d TFs' % len(pfactors))
 for pf, nf in zip(pfactors, nfactors):
     if not pf == nf:
         print('Mismatched TFs!')
 
-#si combinano le predizioni positive e negative
 X = np.vstack([pX, nX])
-#si associano alle prime l'etichetta 1, all seconde l'etichetta 0
 Y = np.vstack([np.ones((pX.shape[0],1)), np.zeros((nX.shape[0],1))])
 
-# Si aggiungono le informazioni di "conservazione", se richiesto
 if add_cons:
     print('Adding conservation')
     with np.load(cons_pos_file) as data:
         pC = data['cons']
     with np.load(cons_neg_file) as data:
         nC = data['cons']                 
-    C = np.vstack((pC, nC)) #si combinano i due array
+    C = np.vstack((pC, nC))
     # add conservation information to TF features
-    X = np.hstack((X, C)) #si aggiungono le informazioni di conservazione
+    X = np.hstack((X, C))
 
-
-# Si aggiungono il transversion_flag per le mutazioni e la distanza normalizzata dal più vicino TSS (da 0 a 1) se richiesto
 if add_feats:
     print('Adding two extra features')
     with np.load(pos_feat_file) as data:
         pF = data['feats']
     with np.load(neg_feat_file) as data:
         nF = data['feats']        
-    X = np.hstack([X, np.vstack([pF, nF])]) #come prima nella conservazione 
-        
-# si applica il masking, togliendo alcuni dei TF, se richiesto
+    X = np.hstack([X, np.vstack([pF, nF])])
+
 if do_masking:
     print('Matching genes')
     with np.load(mask_file) as data:
@@ -108,19 +96,14 @@ if do_masking:
     X = X[c_mask]
     Y = Y[c_mask]
     
-num, dim = X.shape #si salvano in num e dim le dimensioni di X              
+num, dim = X.shape               
 print('Data is loaded\nsample size: %d, dimensions:%d' % (num, dim))
 
-#si effettua una permutazione casuale dei dati 
 np.random.seed(1234)
 shuffled_idx = np.random.permutation(num)
 X[:] = X[shuffled_idx]
 Y[:] = Y[shuffled_idx]
-   
-#nel paper viene richiesta una five-fold cross validation
 
-
-#split dei dati in base al fold_id    
 def split_data(fold_id, num_fold):
     sp = np.linspace(0, num, num_fold+1).astype(np.int)
     splits = np.empty((num_fold, 2), dtype=np.int)
@@ -144,8 +127,7 @@ def split_data(fold_id, num_fold):
     Yvd = np.asarray(Y[idx_vd])
 
     return Xtr,Ytr,Xts,Yts,Xvd,Yvd
-    
-    
+        
 #############################################################
     
 def findNet(inpShape):
@@ -155,7 +137,6 @@ def findNet(inpShape):
     model.add(Dense(1,activation='sigmoid'))
     return model
     
-
 def deepFind():
     num_fold=5
     list_auc=list()
