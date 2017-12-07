@@ -345,8 +345,8 @@ if __name__ == '__main__':
         for l in range(int(sys.argv[2]),len(listfiles)//2):    
             training,test=getNames(listfiles,l)
             exper_name=training[15:-10]
-            for i in range(10):
-                cond=i<5
+            for i in range(int(sys.argv[3])):
+                cond=i<int(sys.argv[3])//2
                 print('I am analyzing %s (%d) in cycle %d' %(exper_name,l,i))
                 score,pred,auc_score,model=predictChip(training,test,cond)
                 print('\nscore is ',score)
@@ -383,8 +383,8 @@ if __name__ == '__main__':
         for j in range(int(sys.argv[2]),len(listfiles)//2):
             training,test=getNames(listfiles,j)
             exper_name=training[20:-9]
-            for i in range(4):
-                cond=i<2
+            for i in range(int(sys.argv[3])):
+                cond=i<int(sys.argv[3])//2
                 print('I am analyzing %s (%d) in cycle %d' %(exper_name,j,i))
                 score,pred,auc_score,model=predictSelex(training,test,cond)
                 print('\nscore is ',score)
